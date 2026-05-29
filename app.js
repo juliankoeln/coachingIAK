@@ -515,7 +515,7 @@ function showPollEditor() {
   const clearBtn = document.getElementById('btn-poll-clear');
   if (clearBtn) clearBtn.onclick = () => {
     if (pollQuestions.length === 0 || confirm('Alle Fragen löschen?')) {
-      pollQuestions = [];
+      pollQuestions.splice(0, pollQuestions.length);
       renderPollQuestionList();
       toast('Fragen geleert', 'info');
     }
@@ -661,7 +661,7 @@ async function showPollSummary() {
     container.appendChild(card);
   });
 
-  document.getElementById('btn-poll-restart').onclick = () => { pollQuestions = []; showPollEditor(); };
+  document.getElementById('btn-poll-restart').onclick = () => { pollQuestions.splice(0, pollQuestions.length); showPollEditor(); };
 }
 
 // ─── PARTICIPANT: Join ──────────────────────────────────────────────────────
@@ -1012,17 +1012,15 @@ function loadPreset(preset) {
   }
 
   // Load poll questions
-  pollQuestions = preset.pollQuestions || [];
+  const loaded = preset.pollQuestions || [];
+  pollQuestions.splice(0, pollQuestions.length);
+  loaded.forEach(q => pollQuestions.push(q));
 
   if (sessionRef) saveWelcome();
 
   const qCount = pollQuestions.length;
   toast(`"${preset.name}" geladen · ${qCount} Frage${qCount!==1?'n':''} ✓`, 'success');
 
-  // Show poll editor if there are questions so user can see them
-  if (qCount > 0) {
-    showPollEditor();
-  } else {
-    showScreen('screen-mod-welcome-edit');
-  }
+  // Always open poll editor after loading so user can see/edit questions
+  showPollEditor();
 }
