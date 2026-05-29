@@ -8,6 +8,8 @@
   <title>CoachBoard</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Bebas+Neue&family=Dancing+Script:wght@600&display=swap">
 </head>
 <body>
 
@@ -15,6 +17,7 @@
 <div id="mod-topbar" class="mod-topbar" style="display:none;">
   <div class="logo" style="font-size:18px;">Coach<span>Board</span></div>
   <div style="display:flex;align-items:center;gap:8px;">
+    <button id="btn-topbar-preset" class="btn btn-ghost" style="font-size:12px;padding:6px 12px;">💾 Vorbereitung</button>
     <button id="btn-topbar-poll" class="btn btn-ghost" style="font-size:12px;padding:6px 12px;">📊 Umfrage</button>
     <button id="btn-topbar-welcome" class="btn btn-ghost" style="font-size:12px;padding:6px 12px;">🏠 Willkommen</button>
     <span class="live-dot">Live</span>
@@ -64,15 +67,39 @@
     <div class="card card-glow">
       <h3 style="margin-bottom:4px;">Willkommensscreen gestalten</h3>
       <p class="muted mb-16" style="font-size:13px;">Änderungen erscheinen sofort auf dem Beamer.</p>
-      <label class="field-label">EMOJI</label>
-      <input id="welcome-emoji" type="text" value="✦" placeholder="z.B. 🎯" maxlength="4" style="font-size:24px;text-align:center;" />
+      <label class="field-label">LOGO (optional)</label>
+      <div class="logo-upload-area" id="logo-upload-area">
+        <img id="logo-preview" src="" alt="" style="display:none;max-height:80px;max-width:200px;border-radius:8px;object-fit:contain;" />
+        <div id="logo-placeholder">
+          <span style="font-size:28px;">🖼</span>
+          <div style="font-size:13px;color:var(--muted);margin-top:6px;">JPG oder PNG klicken oder reinziehen</div>
+        </div>
+        <input type="file" id="logo-file-input" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none;" />
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <button id="btn-choose-logo" class="btn btn-ghost" style="font-size:13px;">📁 Bild wählen</button>
+        <button id="btn-remove-logo" class="btn btn-ghost" style="font-size:13px;display:none;">✕ Entfernen</button>
+      </div>
+
+      <label class="field-label">EMOJI (alternativ zum Logo)</label>
+      <input id="welcome-emoji" type="text" value="✦" placeholder="z.B. 🎯 (leer lassen wenn Logo)" maxlength="4" style="font-size:24px;text-align:center;" />
       <label class="field-label">TITEL</label>
       <input id="welcome-title" type="text" placeholder="z.B. Leadership Workshop" maxlength="60" />
       <label class="field-label">UNTERTITEL</label>
       <input id="welcome-subtitle" type="text" placeholder="z.B. IHK Köln · Mai 2025" maxlength="80" />
+
+      <label class="field-label" style="margin-top:4px;">SCHRIFTART</label>
+      <div class="font-selector" id="font-selector">
+        <button class="font-btn active" data-font="DM Serif Display" style="font-family:'DM Serif Display',serif;">Klassisch</button>
+        <button class="font-btn" data-font="Playfair Display" style="font-family:'Playfair Display',serif;">Elegant</button>
+        <button class="font-btn" data-font="DM Sans" style="font-family:'DM Sans',sans-serif;">Modern</button>
+        <button class="font-btn" data-font="Bebas Neue" style="font-family:'Bebas Neue',sans-serif;">Bold</button>
+        <button class="font-btn" data-font="Dancing Script" style="font-family:'Dancing Script',cursive;">Handschrift</button>
+      </div>
       <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;">
         <button id="btn-save-welcome" class="btn btn-secondary">Auf Beamer zeigen ✓</button>
         <button id="btn-go-lobby" class="btn btn-primary">Weiter zu QR-Code →</button>
+        <button id="btn-open-presets" class="btn btn-ghost">💾 Vorbereitungen</button>
       </div>
     </div>
   </div>
@@ -244,6 +271,21 @@
 </div>
 
 
+<!-- ════ TEILNEHMER: WILLKOMMEN (von Mod gesteuert) ══════════════════════════ -->
+<div id="screen-participant-welcome" class="screen">
+  <div class="page" style="display:flex;flex-direction:column;justify-content:center;min-height:100vh;text-align:center;">
+    <div id="p-welcome-logo-wrap" style="display:none;margin-bottom:20px;">
+      <img id="p-welcome-logo" src="" alt="Logo" style="max-height:120px;max-width:240px;object-fit:contain;border-radius:12px;" />
+    </div>
+    <div id="p-welcome-emoji" style="font-size:64px;margin-bottom:20px;">✦</div>
+    <div id="p-welcome-title" style="font-family:var(--font-d);font-size:clamp(28px,7vw,48px);line-height:1.15;margin-bottom:12px;">Willkommen</div>
+    <div id="p-welcome-sub" style="color:var(--muted);font-size:18px;margin-bottom:32px;"></div>
+    <div style="color:var(--muted);font-size:14px;">Hallo, <strong id="p-welcome-name" style="color:var(--text);"></strong> 👋</div>
+    <div class="live-dot mt-16" style="justify-content:center;">verbunden · warte auf Moderatorin</div>
+  </div>
+</div>
+
+
 <!-- ════ TEILNEHMER: LOBBY ═════════════════════════════════════════════════ -->
 <div id="screen-participant-lobby" class="screen">
   <div class="page" style="display:flex;flex-direction:column;justify-content:center;min-height:100vh;">
@@ -372,6 +414,31 @@
       <p class="mt-8">Die Moderatorin meldet sich wenn's weiter geht.</p>
       <div class="live-dot mt-16" style="justify-content:center;">verbunden</div>
     </div>
+  </div>
+</div>
+
+
+<!-- ════ PRESET MANAGER ══════════════════════════════════════════════════════ -->
+<div id="screen-preset-manager" class="screen has-topbar">
+  <div class="page">
+    <div class="flex-between mb-20">
+      <h2 style="margin:0;">💾 Vorbereitung</h2>
+      <button id="btn-preset-back" class="btn btn-ghost">← Zurück</button>
+    </div>
+    <p class="muted mb-20">Speichere Willkommensscreen und Umfrage-Fragen – damit du morgen beim Kunden einfach laden kannst.</p>
+
+    <!-- Speichern -->
+    <div class="card card-glow" style="margin-bottom:20px;">
+      <h3 style="margin-bottom:4px;">Aktuelle Vorbereitung speichern</h3>
+      <p class="muted mb-16" style="font-size:13px;">Willkommensscreen + alle Umfrage-Fragen werden gespeichert.</p>
+      <label class="field-label">NAME DER VORBEREITUNG</label>
+      <input id="preset-name-input" type="text" placeholder="z.B. IHK Workshop Mai · Führungskräfte" maxlength="60" />
+      <button id="btn-save-preset" class="btn btn-primary">Speichern ✓</button>
+    </div>
+
+    <!-- Liste -->
+    <h3 style="margin-bottom:12px;">Gespeicherte Vorbereitungen</h3>
+    <div id="preset-list"></div>
   </div>
 </div>
 

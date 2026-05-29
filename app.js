@@ -35,6 +35,7 @@ function showModTopbar() {
   document.getElementById('mod-topbar').style.display = 'flex';
   document.getElementById('btn-topbar-welcome').onclick = goToWelcome;
   document.getElementById('btn-topbar-poll').onclick    = () => showPollEditor();
+  document.getElementById('btn-topbar-preset').onclick  = () => showPresetManager();
 }
 function goToWelcome() {
   sessionRef.child('phase').set('welcome');
@@ -82,9 +83,13 @@ function watchDisplayPhase() {
 function setDC(html) { document.getElementById('display-content').innerHTML = html; }
 
 function showDisplayWelcome(w) {
+  const font       = w.font || 'DM Serif Display';
+  const logoHtml   = w.logo
+    ? `<img src="${w.logo}" style="max-height:140px;max-width:320px;object-fit:contain;border-radius:12px;margin-bottom:28px;" />`
+    : `<div class="display-welcome-emoji">${w.emoji||'✦'}</div>`;
   setDC(`<div class="display-welcome">
-    <div class="display-welcome-emoji">${w.emoji||'✦'}</div>
-    <div class="display-welcome-title">${w.title||'Willkommen'}</div>
+    ${logoHtml}
+    <div class="display-welcome-title" style="font-family:'${font}',serif,sans-serif;">${w.title||'Willkommen'}</div>
     <div class="display-welcome-sub">${w.subtitle||''}</div>
   </div>`);
 }
@@ -237,6 +242,9 @@ if (!isDisplay) {
 }
 
 // ─── MOD: Welcome Editor ───────────────────────────────────────────────────
+let welcomeLogoBase64 = null;
+let welcomeFont = 'DM Serif Display';
+
 function showModeratorWelcomeEdit() {
   showScreen('screen-mod-welcome-edit');
   const url = window.location.origin + window.location.pathname + '?display=1&code=' + sessionCode;
@@ -246,6 +254,53 @@ function showModeratorWelcomeEdit() {
   ['welcome-emoji','welcome-title','welcome-subtitle'].forEach(id =>
     document.getElementById(id).oninput = saveWelcome);
 
+  // ── Font selector ──
+  document.querySelectorAll('.font-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.font-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      welcomeFont = btn.dataset.font;
+      saveWelcome();
+    };
+  });
+
+  // ── Logo upload ──
+  const fileInput   = document.getElementById('logo-file-input');
+  const preview     = document.getElementById('logo-preview');
+  const placeholder = document.getElementById('logo-placeholder');
+  const removeBtn   = document.getElementById('btn-remove-logo');
+
+  document.getElementById('btn-choose-logo').onclick = () => fileInput.click();
+  document.getElementById('logo-upload-area').onclick = () => fileInput.click();
+
+  fileInput.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 500 * 1024) { toast('Bild max. 500KB', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      welcomeLogoBase64 = ev.target.result;
+      preview.src = welcomeLogoBase64;
+      preview.style.display = 'block';
+      placeholder.style.display = 'none';
+      removeBtn.style.display = 'inline-flex';
+      // Hide emoji when logo is set
+      document.getElementById('welcome-emoji').value = '';
+      saveWelcome();
+    };
+    reader.readAsDataURL(file);
+  };
+
+  removeBtn.onclick = () => {
+    welcomeLogoBase64 = null;
+    preview.src = '';
+    preview.style.display = 'none';
+    placeholder.style.display = 'block';
+    removeBtn.style.display = 'none';
+    fileInput.value = '';
+    saveWelcome();
+  };
+
   document.getElementById('btn-save-welcome').onclick = () => {
     saveWelcome(); sessionRef.child('phase').set('welcome');
     toast('Willkommensscreen ist live!','success');
@@ -253,12 +308,16 @@ function showModeratorWelcomeEdit() {
   document.getElementById('btn-go-lobby').onclick = () => {
     saveWelcome(); sessionRef.child('phase').set('lobby'); showModeratorLobby();
   };
+  document.getElementById('btn-open-presets').onclick = () => showPresetManager();
 }
+
 function saveWelcome() {
   sessionRef.child('welcome').set({
-    title:   document.getElementById('welcome-title').value.trim()    || 'Willkommen',
-    subtitle:document.getElementById('welcome-subtitle').value.trim() || '',
-    emoji:   document.getElementById('welcome-emoji').value.trim()    || '✦'
+    title:    document.getElementById('welcome-title').value.trim()    || 'Willkommen',
+    subtitle: document.getElementById('welcome-subtitle').value.trim() || '',
+    emoji:    document.getElementById('welcome-emoji').value.trim()    || '',
+    font:     welcomeFont || 'DM Serif Display',
+    logo:     welcomeLogoBase64 || null
   });
 }
 
@@ -604,7 +663,7 @@ function watchSessionPhase() {
   if (phaseListener) sessionRef.child('phase').off('value', phaseListener);
   phaseListener = sessionRef.child('phase').on('value', snap => {
     const phase = snap.val();
-    if      (phase==='welcome')     showParticipantLobby();
+    if      (phase==='welcome')     showParticipantWelcome();
     else if (phase==='lobby')       showParticipantLobby();
     else if (phase==='input')       showParticipantInput();
     else if (phase==='voting')      showParticipantVoting();
@@ -612,6 +671,35 @@ function watchSessionPhase() {
     else if (phase==='poll_active') watchParticipantPoll();
     else if (phase==='poll_done')   showScreen('screen-participant-idle');
   });
+}
+
+function showParticipantWelcome() {
+  sessionRef.child('welcome').once('value', snap => {
+    const w = snap.val() || {};
+    const font = w.font || 'DM Serif Display';
+
+    // Logo or Emoji
+    const logoWrap  = document.getElementById('p-welcome-logo-wrap');
+    const emojiEl   = document.getElementById('p-welcome-emoji');
+    if (w.logo) {
+      document.getElementById('p-welcome-logo').src = w.logo;
+      logoWrap.style.display  = 'block';
+      emojiEl.style.display   = 'none';
+    } else {
+      emojiEl.textContent     = w.emoji || '✦';
+      emojiEl.style.display   = 'block';
+      logoWrap.style.display  = 'none';
+    }
+
+    // Title with chosen font
+    const titleEl = document.getElementById('p-welcome-title');
+    titleEl.textContent = w.title || 'Willkommen';
+    titleEl.style.fontFamily = `'${font}', serif, sans-serif`;
+
+    document.getElementById('p-welcome-sub').textContent  = w.subtitle || '';
+    document.getElementById('p-welcome-name').textContent = myName;
+  });
+  showScreen('screen-participant-welcome');
 }
 
 function showParticipantLobby() {
@@ -782,4 +870,116 @@ function submitPollAnswer(idx, value, optionsEl) {
   sessionRef.child('pollAnswers/' + idx + '/' + myId).set(value);
   optionsEl.style.display = 'none';
   document.getElementById('p-poll-sent').style.display = 'block';
+}
+
+// ─── VORBEREITUNG: Preset speichern & laden ────────────────────────────────
+// Presets werden unter db/presets/<name> gespeichert – unabhängig von Sessions.
+// So kann man zu Hause vorbereiten und morgen einfach laden.
+
+const presetsRef = db.ref('presets');
+
+function showPresetManager() {
+  showScreen('screen-preset-manager');
+  loadPresetList();
+
+  document.getElementById('btn-save-preset').onclick = saveCurrentAsPreset;
+  document.getElementById('btn-preset-back').onclick  = () => showScreen('screen-mod-welcome-edit');
+}
+
+function saveCurrentAsPreset() {
+  const name = document.getElementById('preset-name-input').value.trim();
+  if (!name) { toast('Bitte einen Namen eingeben', 'error'); return; }
+
+  const preset = {
+    name,
+    savedAt: Date.now(),
+    welcome: {
+      emoji:    document.getElementById('welcome-emoji').value.trim()    || '',
+      title:    document.getElementById('welcome-title').value.trim()    || 'Willkommen',
+      subtitle: document.getElementById('welcome-subtitle').value.trim() || '',
+      font:     welcomeFont    || 'DM Serif Display',
+      logo:     welcomeLogoBase64 || null
+    },
+    pollQuestions: pollQuestions || []
+  };
+
+  const key = name.replace(/[^a-zA-Z0-9äöüÄÖÜß_-]/g, '_');
+  presetsRef.child(key).set(preset).then(() => {
+    toast('Preset gespeichert ✓', 'success');
+    document.getElementById('preset-name-input').value = '';
+    loadPresetList();
+  });
+}
+
+function loadPresetList() {
+  const list = document.getElementById('preset-list');
+  list.innerHTML = '<div class="muted" style="font-size:13px;">Lädt…</div>';
+
+  presetsRef.once('value', snap => {
+    const presets = snap.val() || {};
+    list.innerHTML = '';
+
+    if (Object.keys(presets).length === 0) {
+      list.innerHTML = '<div class="muted" style="font-size:13px;">Noch keine gespeicherten Vorbereitungen.</div>';
+      return;
+    }
+
+    Object.entries(presets).sort((a,b) => b[1].savedAt - a[1].savedAt).forEach(([key, preset]) => {
+      const date = new Date(preset.savedAt).toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit',year:'numeric'});
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.style.cssText = 'padding:14px 18px;margin-bottom:10px;display:flex;align-items:center;gap:12px;';
+      card.innerHTML = `
+        <div style="flex:1;">
+          <div style="font-weight:600;margin-bottom:2px;">${preset.welcome.emoji} ${preset.name}</div>
+          <div style="color:var(--muted);font-size:12px;">${date} · ${(preset.pollQuestions||[]).length} Umfrage-Fragen</div>
+        </div>
+        <button class="btn btn-primary btn-sm" style="font-size:12px;padding:6px 14px;">Laden</button>
+        <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px;">🗑</button>
+      `;
+      card.querySelectorAll('button')[0].onclick = () => loadPreset(preset);
+      card.querySelectorAll('button')[1].onclick = () => {
+        if (confirm('Preset löschen?')) presetsRef.child(key).remove().then(() => loadPresetList());
+      };
+      list.appendChild(card);
+    });
+  });
+}
+
+function loadPreset(preset) {
+  const w = preset.welcome || {};
+  document.getElementById('welcome-emoji').value    = w.emoji    || '';
+  document.getElementById('welcome-title').value    = w.title    || '';
+  document.getElementById('welcome-subtitle').value = w.subtitle || '';
+
+  // Restore font
+  welcomeFont = w.font || 'DM Serif Display';
+  document.querySelectorAll('.font-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.font === welcomeFont);
+  });
+
+  // Restore logo
+  const preview     = document.getElementById('logo-preview');
+  const placeholder = document.getElementById('logo-placeholder');
+  const removeBtn   = document.getElementById('btn-remove-logo');
+  if (w.logo) {
+    welcomeLogoBase64     = w.logo;
+    preview.src           = w.logo;
+    preview.style.display = 'block';
+    placeholder.style.display = 'none';
+    removeBtn.style.display   = 'inline-flex';
+  } else {
+    welcomeLogoBase64         = null;
+    preview.src               = '';
+    preview.style.display     = 'none';
+    placeholder.style.display = 'block';
+    removeBtn.style.display   = 'none';
+  }
+
+  // Load poll questions
+  pollQuestions = preset.pollQuestions || [];
+
+  if (sessionRef) saveWelcome();
+  toast(`"${preset.name}" geladen ✓`, 'success');
+  showScreen('screen-mod-welcome-edit');
 }
