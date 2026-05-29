@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f0e17" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>CoachBoard</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ════ MOD TOPBAR ════════════════════════════════════════════════════════ -->
+<div id="mod-topbar" class="mod-topbar" style="display:none;">
+  <div class="logo" style="font-size:18px;">Coach<span>Board</span></div>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <button id="btn-topbar-poll" class="btn btn-ghost" style="font-size:12px;padding:6px 12px;">📊 Umfrage</button>
+    <button id="btn-topbar-welcome" class="btn btn-ghost" style="font-size:12px;padding:6px 12px;">🏠 Willkommen</button>
+    <span class="live-dot">Live</span>
+  </div>
+</div>
+
+
+<!-- ════ BEAMER ════════════════════════════════════════════════════════════ -->
+<div id="screen-display" class="screen">
+  <div class="display-wrap">
+    <div class="display-topbar">
+      <div class="logo" style="font-size:20px;">Coach<span>Board</span></div>
+      <span class="live-dot">Live</span>
+    </div>
+    <div id="display-content"></div>
+  </div>
+</div>
+
+
+<!-- ════ HOME ══════════════════════════════════════════════════════════════ -->
+<div id="screen-home" class="screen">
+  <div class="page" style="display:flex;flex-direction:column;justify-content:center;min-height:100vh;">
+    <div style="margin-bottom:48px;">
+      <div class="logo">Coach<span>Board</span></div>
+      <p class="mt-8" style="font-size:15px;">Live-Tools für Coaching & Workshops</p>
+    </div>
+    <h1 style="margin-bottom:16px;">Eine Gruppe.<br>Echte Momente.</h1>
+    <p style="margin-bottom:40px;max-width:380px;">Erstelle eine Session, zeig den QR-Code – und los geht's. Teilnehmer brauchen nur ihr Handy.</p>
+    <button id="btn-create-session" class="btn btn-primary btn-lg btn-full">✦ &nbsp;Neue Session starten</button>
+    <div style="position:fixed;top:-120px;right:-120px;width:400px;height:400px;border-radius:50%;background:radial-gradient(circle,rgba(123,110,246,.12) 0%,transparent 70%);pointer-events:none;"></div>
+    <div style="position:fixed;bottom:-80px;left:-80px;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(232,197,71,.07) 0%,transparent 70%);pointer-events:none;"></div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: WILLKOMMENSSCREEN EDITOR ════════════════════════════════════ -->
+<div id="screen-mod-welcome-edit" class="screen has-topbar">
+  <div class="page">
+    <div class="card" style="border-color:rgba(123,110,246,.4);margin-bottom:20px;">
+      <div style="font-weight:600;margin-bottom:6px;">📺 Beamer-Link</div>
+      <p class="muted" style="font-size:13px;margin-bottom:12px;">Klick → neuer Tab → auf Beamer-Screen ziehen.</p>
+      <a id="display-url-link" href="#" target="_blank" class="display-link-box">
+        <span id="display-url-text">wird geladen…</span>
+        <span class="display-link-icon">↗</span>
+      </a>
+    </div>
+    <div class="card card-glow">
+      <h3 style="margin-bottom:4px;">Willkommensscreen gestalten</h3>
+      <p class="muted mb-16" style="font-size:13px;">Änderungen erscheinen sofort auf dem Beamer.</p>
+      <label class="field-label">EMOJI</label>
+      <input id="welcome-emoji" type="text" value="✦" placeholder="z.B. 🎯" maxlength="4" style="font-size:24px;text-align:center;" />
+      <label class="field-label">TITEL</label>
+      <input id="welcome-title" type="text" placeholder="z.B. Leadership Workshop" maxlength="60" />
+      <label class="field-label">UNTERTITEL</label>
+      <input id="welcome-subtitle" type="text" placeholder="z.B. IHK Köln · Mai 2025" maxlength="80" />
+      <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;">
+        <button id="btn-save-welcome" class="btn btn-secondary">Auf Beamer zeigen ✓</button>
+        <button id="btn-go-lobby" class="btn btn-primary">Weiter zu QR-Code →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: LOBBY ════════════════════════════════════════════════════════ -->
+<div id="screen-mod-lobby" class="screen has-topbar">
+  <div class="page">
+    <div class="card card-glow center">
+      <h3 style="font-family:var(--font-d);font-size:20px;margin-bottom:4px;">Teilnehmer einladen</h3>
+      <p class="muted mt-4">QR-Code scannen oder Code eingeben</p>
+      <div id="qr-code"></div>
+      <div id="session-code-display" class="code-display">– – – – –</div>
+      <div id="join-url" class="url-display"></div>
+      <button id="btn-copy-link" class="btn btn-ghost" style="margin:0 auto;">📋 &nbsp;Link kopieren</button>
+    </div>
+    <div class="card">
+      <div class="flex-between mb-16">
+        <h3>Verbundene Teilnehmer</h3>
+        <span class="badge badge-success"><span id="participant-count">0</span> online</span>
+      </div>
+      <div id="participant-list"><span class="muted" style="font-size:13px;">Warten auf Teilnehmer…</span></div>
+    </div>
+    <div class="card" style="border-color:rgba(232,197,71,.3);">
+      <h3>Icebreaker: Nobody is Perfect</h3>
+      <p class="mt-4 mb-16">Jede Person schreibt eine überraschende Wahrheit über sich.</p>
+      <button id="btn-start-icebreaker" class="btn btn-primary btn-full" disabled>Icebreaker starten →</button>
+      <p class="muted mt-8" style="font-size:12px;text-align:center;">Mindestens 2 Teilnehmer nötig</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: ICEBREAKER WARTEN ═══════════════════════════════════════════ -->
+<div id="screen-mod-waiting" class="screen has-topbar">
+  <div class="page" style="display:flex;flex-direction:column;justify-content:center;min-height:calc(100vh - 56px);">
+    <div class="card card-glow center">
+      <div class="waiting-icon"></div>
+      <h2>Antworten kommen rein…</h2>
+      <p class="mt-8 mb-16">Teilnehmer schreiben ihre überraschende Wahrheit.</p>
+      <div id="answer-progress" class="progress-text">0 von ? Antworten eingegangen</div>
+      <button id="btn-start-voting" class="btn btn-primary btn-full" disabled>Abstimmung starten →</button>
+      <p class="muted mt-8" style="font-size:12px;">Mindestens 2 Antworten nötig</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: ICEBREAKER ABSTIMMUNG ═══════════════════════════════════════ -->
+<div id="screen-mod-voting" class="screen has-topbar">
+  <div class="page" style="display:flex;flex-direction:column;justify-content:center;min-height:calc(100vh - 56px);">
+    <div class="card card-glow center">
+      <div class="waiting-icon"></div>
+      <h2>Abstimmung läuft</h2>
+      <p class="mt-8 mb-16">Teilnehmer tippen wer was geschrieben hat.</p>
+      <div id="voting-progress" class="progress-text">0 von ? haben abgestimmt</div>
+      <button id="btn-show-results" class="btn btn-primary btn-full" disabled>Ergebnisse zeigen 🎉</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: ICEBREAKER ERGEBNISSE ══════════════════════════════════════ -->
+<div id="screen-mod-results" class="screen has-topbar">
+  <div class="page">
+    <div class="flex-between mb-24">
+      <h2 style="margin:0;">Auflösung 🎉</h2>
+      <button id="btn-new-round" class="btn btn-ghost">↺ Neue Runde</button>
+    </div>
+    <p class="mb-24">Wer kannte wen wirklich?</p>
+    <div id="results-container"></div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: UMFRAGE EDITOR ══════════════════════════════════════════════ -->
+<div id="screen-mod-poll-editor" class="screen has-topbar">
+  <div class="page">
+    <div class="flex-between mb-20">
+      <h2 style="margin:0;">📊 Umfrage erstellen</h2>
+      <button id="btn-poll-start" class="btn btn-primary" disabled>Umfrage starten →</button>
+    </div>
+    <p class="muted mb-20">Füge Fragen hinzu. Du steuerst dann Frage für Frage live.</p>
+
+    <!-- Fragen-Liste -->
+    <div id="poll-question-list" style="margin-bottom:16px;"></div>
+
+    <!-- Neue Frage hinzufügen -->
+    <div class="card" style="border-style:dashed;">
+      <h3 style="margin-bottom:12px;">＋ Neue Frage</h3>
+
+      <label class="field-label">FRAGETEXT</label>
+      <input id="poll-q-text" type="text" placeholder="z.B. Wie zufrieden bist du mit der Teamkommunikation?" maxlength="140" />
+
+      <label class="field-label">TYP</label>
+      <div class="type-selector" id="poll-type-selector">
+        <button class="type-btn active" data-type="scale">📊 Skala 1–5</button>
+        <button class="type-btn" data-type="yesno">👍 Ja / Nein</button>
+        <button class="type-btn" data-type="choice">🔘 Auswahl</button>
+      </div>
+
+      <!-- Auswahl-Optionen (nur bei type=choice) -->
+      <div id="poll-choice-options" style="display:none;margin-top:12px;">
+        <label class="field-label">ANTWORTOPTIONEN</label>
+        <div id="poll-options-list"></div>
+        <button id="btn-add-option" class="btn btn-ghost" style="margin-top:6px;font-size:13px;">＋ Option hinzufügen</button>
+      </div>
+
+      <button id="btn-add-question" class="btn btn-secondary" style="margin-top:16px;">Frage hinzufügen</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: UMFRAGE LIVE-STEUERUNG ══════════════════════════════════════ -->
+<div id="screen-mod-poll-live" class="screen has-topbar">
+  <div class="page">
+    <div class="flex-between mb-16">
+      <div>
+        <div style="color:var(--muted);font-size:12px;font-weight:600;letter-spacing:1px;margin-bottom:4px;">FRAGE <span id="poll-live-qnum">1</span> VON <span id="poll-live-qtotal">?</span></div>
+        <h2 id="poll-live-question" style="margin:0;font-size:20px;line-height:1.3;"></h2>
+      </div>
+    </div>
+
+    <!-- Live Balkendiagramm -->
+    <div class="card card-glow" style="margin-bottom:16px;">
+      <div class="flex-between mb-12">
+        <div style="font-weight:600;">Live-Ergebnisse</div>
+        <span class="badge badge-success"><span id="poll-live-count">0</span> Antworten</span>
+      </div>
+      <div id="poll-live-bars"></div>
+    </div>
+
+    <!-- Steuerung -->
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button id="btn-poll-prev-q" class="btn btn-ghost">← Zurück</button>
+      <button id="btn-poll-next-q" class="btn btn-primary" style="flex:1;">Nächste Frage →</button>
+      <button id="btn-poll-end" class="btn btn-danger">Umfrage beenden</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: UMFRAGE GESAMTÜBERSICHT ════════════════════════════════════ -->
+<div id="screen-mod-poll-summary" class="screen has-topbar">
+  <div class="page">
+    <div class="flex-between mb-20">
+      <h2 style="margin:0;">Umfrage abgeschlossen ✓</h2>
+      <button id="btn-poll-restart" class="btn btn-ghost">↺ Neu starten</button>
+    </div>
+    <div id="poll-summary-container"></div>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: JOIN ══════════════════════════════════════════════════ -->
+<div id="screen-join" class="screen">
+  <div class="page" style="display:flex;flex-direction:column;justify-content:center;min-height:100vh;">
+    <div class="logo mb-32" style="text-align:center;">Coach<span>Board</span></div>
+    <div class="card card-glow">
+      <h2 class="center" style="margin-bottom:6px;">Willkommen!</h2>
+      <p class="center mb-24">Session: <strong id="session-code-join" style="color:var(--accent);letter-spacing:2px;"></strong></p>
+      <label class="field-label">Dein Name</label>
+      <input id="input-name" type="text" placeholder="Wie heißt du?" autocomplete="off" style="font-size:18px;text-align:center;" maxlength="30" />
+      <button id="btn-join" class="btn btn-primary btn-lg btn-full mt-8">Beitreten →</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: LOBBY ═════════════════════════════════════════════════ -->
+<div id="screen-participant-lobby" class="screen">
+  <div class="page" style="display:flex;flex-direction:column;justify-content:center;min-height:100vh;">
+    <div class="card card-glow center">
+      <span class="emoji-big">👋</span>
+      <h2>Hallo, <span id="p-name-display"></span>!</h2>
+      <p class="mt-8 mb-16">Du bist verbunden. Die Moderatorin startet gleich.</p>
+      <div class="live-dot" style="justify-content:center;"><span id="p-participant-count">Verbinde…</span></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: ICEBREAKER INPUT ════════════════════════════════════ -->
+<div id="screen-participant-input" class="screen">
+  <div class="page">
+    <div class="logo mb-32" style="font-size:22px;">Coach<span>Board</span></div>
+    <div class="card card-glow">
+      <span class="badge badge-yellow mb-16">Nobody is Perfect</span>
+      <h2 style="margin-bottom:12px;">Deine überraschende Wahrheit</h2>
+      <p class="mb-24">Schreib etwas über dich, das die anderen <em>nicht</em> vermuten würden.</p>
+      <label class="field-label">Deine Antwort (max. 120 Zeichen)</label>
+      <textarea id="input-answer" placeholder="z.B. »Ich habe mal einen Weltrekord aufgestellt.«" maxlength="120" rows="4"></textarea>
+      <button id="btn-submit-answer" class="btn btn-primary btn-lg btn-full">Abschicken ✓</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: ANTWORT GESENDET ════════════════════════════════════ -->
+<div id="screen-participant-answer-sent" class="screen">
+  <div class="page" style="display:flex;flex-direction:column;justify-content:center;min-height:100vh;">
+    <div class="card card-glow center">
+      <span class="emoji-big">✨</span>
+      <h2>Gut! Antwort ist drin.</h2>
+      <p class="mt-8">Warte kurz – die Abstimmung startet gleich automatisch.</p>
+      <div class="waiting-icon mt-24"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: ICEBREAKER VOTING ═══════════════════════════════════ -->
+<div id="screen-participant-voting" class="screen">
+  <div class="page">
+    <div class="logo mb-16" style="font-size:22px;">Coach<span>Board</span></div>
+    <h2 style="margin-bottom:6px;">Wer hat das geschrieben?</h2>
+    <p class="mb-24">Tippe bei jeder Aussage auf den Namen der Person.</p>
+    <div id="voting-cards"></div>
+    <button id="btn-submit-votes" class="btn btn-primary btn-lg btn-full" disabled>Noch nicht alle beantwortet…</button>
+    <div style="height:32px;"></div>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: ABGESTIMMT ═══════════════════════════════════════════ -->
+<div id="screen-participant-voted" class="screen">
+  <div class="page" style="display:flex;flex-direction:column;justify-content:center;min-height:100vh;">
+    <div class="card card-glow center">
+      <span class="emoji-big">🤫</span>
+      <h2>Abgestimmt!</h2>
+      <p class="mt-8">Warte auf die Auflösung der Moderatorin…</p>
+      <div class="waiting-icon mt-24"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: ICEBREAKER ERGEBNISSE ════════════════════════════════ -->
+<div id="screen-participant-results" class="screen">
+  <div class="page">
+    <div class="logo mb-16" style="font-size:22px;text-align:center;">Coach<span>Board</span></div>
+    <h2 style="margin-bottom:4px;text-align:center;">Auflösung 🎉</h2>
+    <p class="mb-20" style="text-align:center;">Wer kannte wen wirklich?</p>
+    <div id="p-results-container"></div>
+    <div id="p-put-away" style="display:none;">
+      <div class="put-away-card">
+        <span style="font-size:36px;">📱</span>
+        <div style="font-weight:600;margin:8px 0 4px;">Danke!</div>
+        <div style="color:var(--muted);font-size:13px;">Du kannst dein Handy jetzt weglegen.<br>Die Moderatorin führt weiter.</div>
+      </div>
+    </div>
+    <div style="height:32px;"></div>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: UMFRAGE FRAGE ════════════════════════════════════════ -->
+<div id="screen-participant-poll" class="screen">
+  <div class="page">
+    <div class="logo mb-20" style="font-size:20px;">Coach<span>Board</span></div>
+    <div class="card card-glow">
+      <span class="badge mb-12" id="p-poll-badge">Frage 1</span>
+      <div id="p-poll-question" style="font-family:var(--font-d);font-size:22px;line-height:1.35;margin-bottom:20px;"></div>
+      <div id="p-poll-options"></div>
+      <!-- Bestätigung nach Abstimmung -->
+      <div id="p-poll-sent" style="display:none;text-align:center;padding:16px 0;">
+        <div style="font-size:32px;margin-bottom:8px;">✓</div>
+        <div style="font-weight:600;color:var(--success);">Antwort gesendet</div>
+        <div style="color:var(--muted);font-size:13px;margin-top:4px;">Warte auf nächste Frage…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: UMFRAGE WARTEN ══════════════════════════════════════ -->
+<div id="screen-participant-poll-wait" class="screen">
+  <div class="page" style="display:flex;flex-direction:column;justify-content:center;min-height:100vh;">
+    <div class="card card-glow center">
+      <span class="emoji-big">📊</span>
+      <h2>Umfrage läuft</h2>
+      <p class="mt-8">Die nächste Frage kommt gleich…</p>
+      <div class="waiting-icon mt-24"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: IDLE ══════════════════════════════════════════════════ -->
+<div id="screen-participant-idle" class="screen">
+  <div class="page" style="display:flex;flex-direction:column;justify-content:center;min-height:100vh;">
+    <div class="card card-glow center">
+      <span class="emoji-big">☕</span>
+      <h2>Bis gleich!</h2>
+      <p class="mt-8">Die Moderatorin meldet sich wenn's weiter geht.</p>
+      <div class="live-dot mt-16" style="justify-content:center;">verbunden</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="firebase.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
