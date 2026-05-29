@@ -208,10 +208,15 @@ function showDisplayPollActive(s) {
   </div>`);
 }
 
+let _displayTimerInterval = null;
+let _displayTimerSeconds  = 0;
+
 function showDisplayTeam(s) {
   const team = s.team || {};
   const c    = (team.challenges || [])[team.currentIdx || 0];
   if (!c) return;
+
+  // Render static structure once (timer updated separately)
   const scores  = team.scores || {};
   const sorted  = Object.entries(scores).sort((a,b) => b[1]-a[1]);
   const scoreBar = sorted.map(([name, pts], i) =>
@@ -221,16 +226,11 @@ function showDisplayTeam(s) {
       <div style="font-weight:700;font-size:20px;color:var(--accent);">${pts} Pkt</div>
     </div>`).join('');
 
-  const m = Math.floor(Math.max(0, team.timerSeconds||0) / 60);
-  const sec = Math.max(0, team.timerSeconds||0) % 60;
-  const timerStr = `${m}:${sec.toString().padStart(2,'0')}`;
-  const timerColor = (team.timerSeconds||0) <= 30 ? 'var(--accent3)' : (team.timerSeconds||0) <= 60 ? 'var(--accent)' : 'var(--text)';
-
   setDC(`<div class="display-team">
     <div class="display-team-left">
       <div class="display-label">CHALLENGE ${(team.currentIdx||0)+1} VON ${team.challenges.length}</div>
       <div class="display-team-q">${c.text}</div>
-      <div style="font-size:clamp(40px,6vw,80px);font-weight:700;color:${timerColor};margin-top:20px;font-family:monospace;">${timerStr}</div>
+      <div id="display-team-timer" style="font-size:clamp(40px,6vw,80px);font-weight:700;color:var(--text);margin-top:20px;font-family:monospace;">--:--</div>
       <div style="color:var(--muted);font-size:16px;margin-top:4px;">⏱ ${c.minutes} Min · ★ ${c.points} Punkte</div>
     </div>
     <div class="display-team-right">
@@ -238,6 +238,28 @@ function showDisplayTeam(s) {
       ${scoreBar || '<div style="color:var(--muted)">Noch keine Punkte</div>'}
     </div>
   </div>`);
+
+  // Start local countdown on beamer
+  clearInterval(_displayTimerInterval);
+  _displayTimerSeconds = team.timerSeconds || c.minutes * 60;
+  updateDisplayTimer();
+
+  if (team.timerRunning) {
+    _displayTimerInterval = setInterval(() => {
+      _displayTimerSeconds--;
+      updateDisplayTimer();
+      if (_displayTimerSeconds <= 0) clearInterval(_displayTimerInterval);
+    }, 1000);
+  }
+}
+
+function updateDisplayTimer() {
+  const el = document.getElementById('display-team-timer');
+  if (!el) return;
+  const m   = Math.floor(Math.max(0, _displayTimerSeconds) / 60);
+  const s   = Math.max(0, _displayTimerSeconds) % 60;
+  el.textContent = `${m}:${s.toString().padStart(2,'0')}`;
+  el.style.color = _displayTimerSeconds <= 30 ? 'var(--accent3)' : _displayTimerSeconds <= 60 ? 'var(--accent)' : 'var(--text)';
 }
 
 function showDisplayTeamDone(s) {
@@ -1025,7 +1047,7 @@ function loadPresetList() {
       card.innerHTML = `
         <div style="flex:1;">
           <div style="font-weight:600;margin-bottom:2px;">${preset.welcome.emoji} ${preset.name}</div>
-          <div style="color:var(--muted);font-size:12px;">${date} · ${(preset.pollQuestions||[]).length} Umfrage-Fragen</div>
+          <div style="color:var(--muted);font-size:12px;">${date} · ${(preset.pollQuestions||[]).length} Umfrage-Fragen · ${(preset.teamChallenges||[]).length} Challenges</div>
         </div>
         <button class="btn btn-primary btn-sm" style="font-size:12px;padding:6px 14px;">Laden</button>
         <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px;">🗑</button>
@@ -1074,13 +1096,24 @@ function loadPreset(preset) {
   pollQuestions.splice(0, pollQuestions.length);
   loaded.forEach(q => pollQuestions.push(q));
 
+  // Load team challenges
+  const loadedTeam = preset.teamChallenges || [];
+  teamChallenges.splice(0, teamChallenges.length);
+  loadedTeam.forEach(c => teamChallenges.push(c));
+
   if (sessionRef) saveWelcome();
 
   const qCount = pollQuestions.length;
   toast(`"${preset.name}" geladen · ${qCount} Frage${qCount!==1?'n':''} ✓`, 'success');
 
-  // Always open poll editor after loading so user can see/edit questions
-  showPollEditor();
+  // Open poll editor if questions loaded, else team editor if challenges, else welcome
+  if (pollQuestions.length > 0) {
+    showPollEditor();
+  } else if (teamChallenges.length > 0) {
+    showTeamEditor();
+  } else {
+    showScreen('screen-mod-welcome-edit');
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1192,8 +1225,10 @@ async function showManualTeamAssignment(count) {
         // Click to move to next team
         chip.style.cursor = 'pointer';
         chip.onclick = () => {
+          // Click a member to move them to next team
+          const curIdx = teamNames.indexOf(tname);
+          const nextTeam = teamNames[(curIdx + 1) % teamNames.length];
           teamAssignments[tname] = teamAssignments[tname].filter(x => x.id !== p.id);
-          const nextTeam = teamNames[(ti + 1) % teamNames.length];
           teamAssignments[nextTeam].push(p);
           renderManualGrid();
           checkTeamStartReady();
@@ -1216,7 +1251,10 @@ async function showManualTeamAssignment(count) {
         chip.style.cssText = 'padding:4px 8px;background:var(--surface2);border-radius:6px;margin-bottom:4px;font-size:13px;cursor:pointer;';
         chip.textContent = p.name;
         chip.onclick = () => {
-          teamAssignments[teamNames[0]].push(p);
+          // Add unassigned to smallest team
+          const smallest = teamNames.reduce((a,b) =>
+            (teamAssignments[a]||[]).length <= (teamAssignments[b]||[]).length ? a : b);
+          teamAssignments[smallest].push(p);
           renderManualGrid();
           checkTeamStartReady();
         };
@@ -1226,8 +1264,7 @@ async function showManualTeamAssignment(count) {
     }
   }
 
-  // Put all in first team initially
-  parts.forEach(p => teamAssignments[teamNames[0]].push(p));
+  // Start with all participants unassigned
   renderManualGrid();
   checkTeamStartReady();
 }
@@ -1354,14 +1391,21 @@ function renderTeamLiveCards() {
         <div style="font-weight:600;margin-bottom:2px;">${tname}</div>
         <div style="color:var(--muted);font-size:12px;">${members.map(p=>p.name).join(', ')}</div>
       </div>
-      <div style="font-weight:700;color:var(--accent);font-size:18px;">${teamScores[tname] || 0} Pkt</div>
-      <button class="btn btn-success" style="font-size:12px;padding:6px 12px;">+${c.points} ★</button>
+      <div style="font-weight:700;color:var(--accent);font-size:18px;min-width:60px;text-align:right;">${teamScores[tname] || 0} Pkt</div>
+      <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px;" data-action="minus">−</button>
+      <button class="btn btn-success" style="font-size:12px;padding:6px 12px;" data-action="plus">+${c.points} ★</button>
     `;
-    card.querySelector('button').onclick = () => {
+    card.querySelector('[data-action="plus"]').onclick = () => {
       teamScores[tname] = (teamScores[tname] || 0) + c.points;
       sessionRef.child('team/scores').set(teamScores);
       renderTeamLiveCards();
       toast(`${tname}: +${c.points} Punkte!`, 'success');
+    };
+    card.querySelector('[data-action="minus"]').onclick = () => {
+      teamScores[tname] = Math.max(0, (teamScores[tname] || 0) - c.points);
+      sessionRef.child('team/scores').set(teamScores);
+      renderTeamLiveCards();
+      toast(`${tname}: −${c.points} Punkte`, 'info');
     };
     container.appendChild(card);
   });
