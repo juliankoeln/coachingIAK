@@ -1,5 +1,10 @@
 // app.js – CoachBoard v4
 
+// Guard: make sure Firebase is ready before anything runs
+if (typeof firebase === 'undefined') {
+  console.error('Firebase not loaded!');
+}
+
 // ─── Helpers ───────────────────────────────────────────────────────────────
 function randomCode() { return Math.random().toString(36).substring(2,7).toUpperCase(); }
 function getUrlParam(n) { return new URLSearchParams(window.location.search).get(n); }
@@ -40,15 +45,29 @@ function goToWelcome() {
 isDisplay = getUrlParam('display') === '1';
 if (isDisplay) {
   sessionCode = getUrlParam('code');
-  sessionRef  = db.ref('sessions/' + sessionCode);
-  document.body.classList.add('display-mode');
-  showScreen('screen-display');
-  watchDisplayPhase();
+  if (!sessionCode) {
+    document.body.innerHTML = '<div style="color:#fff;font-family:sans-serif;padding:40px;font-size:20px;">⚠️ Kein Session-Code in der URL.</div>';
+  } else {
+    sessionRef = db.ref('sessions/' + sessionCode);
+    document.body.classList.add('display-mode');
+    showScreen('screen-display');
+    document.getElementById('display-content').innerHTML = `<div class="display-centered"><div class="waiting-icon" style="margin:0 auto 20px;"></div><div style="color:var(--muted);font-size:24px;">Verbinde mit Session…</div></div>`;
+    watchDisplayPhase();
+  }
 }
 
 function watchDisplayPhase() {
   sessionRef.on('value', snap => {
-    const s = snap.val(); if (!s) return;
+    const s = snap.val();
+    if (!s) {
+      document.getElementById('display-content').innerHTML = `
+        <div class="display-centered">
+          <div class="display-big-emoji">⚠️</div>
+          <div class="display-big-title" style="font-size:36px;">Session nicht gefunden</div>
+          <div class="display-big-sub">Bitte neuen Beamer-Link von der Moderatorin holen.</div>
+        </div>`;
+      return;
+    }
     const p = s.phase;
     if      (p === 'welcome')     showDisplayWelcome(s.welcome || {});
     else if (p === 'lobby')       showDisplayLobby(s);
@@ -208,10 +227,12 @@ if (!isDisplay) {
       code:sessionCode, createdAt:Date.now(), phase:'welcome',
       welcome:{emoji:'✦',title:'Willkommen',subtitle:''},
       participants:{}, answers:{}, votes:{}
+    }).then(() => {
+      // Only show UI after Firebase confirms the session is written
+      showModTopbar();
+      showModeratorWelcomeEdit();
     });
     setTimeout(()=>sessionRef.remove(), 8*60*60*1000);
-    showModTopbar();
-    showModeratorWelcomeEdit();
   });
 }
 
