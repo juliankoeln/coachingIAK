@@ -33,11 +33,19 @@ let pollLiveListener = null;
 // ─── MOD TOPBAR ────────────────────────────────────────────────────────────
 function showModTopbar() {
   document.getElementById('mod-topbar').style.display = 'flex';
-  document.getElementById('btn-topbar-welcome').onclick = goToWelcome;
+  document.getElementById('btn-topbar-welcome').onclick = goToWelcome;        // just sets phase
+  document.getElementById('btn-topbar-welcome-edit').onclick = goToWelcomeEditor; // opens editor
   document.getElementById('btn-topbar-poll').onclick    = () => showPollEditor();
   document.getElementById('btn-topbar-preset').onclick  = () => showPresetManager();
 }
 function goToWelcome() {
+  // Just push phase to Firebase - all participant phones flip to welcome screen
+  // Mod stays on current screen (no editor forced open)
+  sessionRef.child('phase').set('welcome');
+  toast('Willkommensscreen aktiv auf allen Handys ✓', 'success');
+}
+
+function goToWelcomeEditor() {
   sessionRef.child('phase').set('welcome');
   showScreen('screen-mod-welcome-edit');
 }
@@ -1007,6 +1015,14 @@ function loadPreset(preset) {
   pollQuestions = preset.pollQuestions || [];
 
   if (sessionRef) saveWelcome();
-  toast(`"${preset.name}" geladen ✓`, 'success');
-  showScreen('screen-mod-welcome-edit');
+
+  const qCount = pollQuestions.length;
+  toast(`"${preset.name}" geladen · ${qCount} Frage${qCount!==1?'n':''} ✓`, 'success');
+
+  // Show poll editor if there are questions so user can see them
+  if (qCount > 0) {
+    showPollEditor();
+  } else {
+    showScreen('screen-mod-welcome-edit');
+  }
 }
