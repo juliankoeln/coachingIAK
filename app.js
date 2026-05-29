@@ -437,7 +437,8 @@ async function showModResults() {
 // ─── MOD: POLL EDITOR ──────────────────────────────────────────────────────
 function showPollEditor() {
   showScreen('screen-mod-poll-editor');
-  pollQuestions = [];
+  // Don't reset if questions were loaded from a preset
+  // Only reset if explicitly called without existing questions
   renderPollQuestionList();
 
   // Type selector
@@ -485,6 +486,15 @@ function showPollEditor() {
   };
 
   document.getElementById('btn-poll-start').onclick = startPollLive;
+
+  const clearBtn = document.getElementById('btn-poll-clear');
+  if (clearBtn) clearBtn.onclick = () => {
+    if (pollQuestions.length === 0 || confirm('Alle Fragen löschen?')) {
+      pollQuestions = [];
+      renderPollQuestionList();
+      toast('Fragen geleert', 'info');
+    }
+  };
 }
 
 function renderPollQuestionList() {
@@ -626,7 +636,7 @@ async function showPollSummary() {
     container.appendChild(card);
   });
 
-  document.getElementById('btn-poll-restart').onclick = () => showPollEditor();
+  document.getElementById('btn-poll-restart').onclick = () => { pollQuestions = []; showPollEditor(); };
 }
 
 // ─── PARTICIPANT: Join ──────────────────────────────────────────────────────
