@@ -435,54 +435,71 @@ async function showModResults() {
 }
 
 // ─── MOD: POLL EDITOR ──────────────────────────────────────────────────────
+// Poll editor state – module level so closures stay clean
+let pollSelectedType  = 'scale';
+let pollChoiceOptions = [];
+
+function renderChoiceOptions() {
+  const list = document.getElementById('poll-options-list');
+  if (!list) return;
+  list.innerHTML = '';
+  pollChoiceOptions.forEach((opt, i) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px;';
+    row.innerHTML = `<input type="text" value="${opt}" placeholder="Option ${i+1}" style="flex:1;margin-bottom:0;" />
+      <button class="btn btn-ghost" style="padding:6px 10px;flex-shrink:0;">✕</button>`;
+    row.querySelector('input').oninput = e => { pollChoiceOptions[i] = e.target.value; };
+    row.querySelector('button').onclick = () => { pollChoiceOptions.splice(i, 1); renderChoiceOptions(); };
+    list.appendChild(row);
+  });
+}
+
 function showPollEditor() {
   showScreen('screen-mod-poll-editor');
-  // Don't reset if questions were loaded from a preset
-  // Only reset if explicitly called without existing questions
+
+  // Reset input fields but keep loaded questions
+  pollSelectedType  = 'scale';
+  pollChoiceOptions = [];
+  document.getElementById('poll-q-text').value = '';
+  document.getElementById('poll-choice-options').style.display = 'none';
+  document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+  const defaultTypeBtn = document.querySelector('.type-btn[data-type="scale"]');
+  if (defaultTypeBtn) defaultTypeBtn.classList.add('active');
+  renderChoiceOptions();
   renderPollQuestionList();
 
   // Type selector
-  let selectedType = 'scale';
   document.querySelectorAll('.type-btn').forEach(btn => {
     btn.onclick = () => {
-      document.querySelectorAll('.type-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      selectedType = btn.dataset.type;
-      document.getElementById('poll-choice-options').style.display = selectedType==='choice' ? 'block' : 'none';
+      pollSelectedType = btn.dataset.type;
+      document.getElementById('poll-choice-options').style.display =
+        pollSelectedType === 'choice' ? 'block' : 'none';
     };
   });
 
-  // Choice options builder
-  let choiceOptions = [];
-  function renderChoiceOptions() {
-    const list = document.getElementById('poll-options-list');
-    list.innerHTML = '';
-    choiceOptions.forEach((opt,i) => {
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px;';
-      row.innerHTML = `<input type="text" value="${opt}" placeholder="Option ${i+1}" style="flex:1;margin-bottom:0;" />
-        <button class="btn btn-ghost" style="padding:6px 10px;flex-shrink:0;">✕</button>`;
-      row.querySelector('input').oninput = e => choiceOptions[i] = e.target.value;
-      row.querySelector('button').onclick = () => { choiceOptions.splice(i,1); renderChoiceOptions(); };
-      list.appendChild(row);
-    });
-  }
+  // Add option
   document.getElementById('btn-add-option').onclick = () => {
-    choiceOptions.push(''); renderChoiceOptions();
+    pollChoiceOptions.push(''); renderChoiceOptions();
   };
 
   // Add question
   document.getElementById('btn-add-question').onclick = () => {
     const text = document.getElementById('poll-q-text').value.trim();
-    if (!text) { toast('Bitte Fragetext eingeben','error'); return; }
-    if (selectedType==='choice' && choiceOptions.filter(o=>o.trim()).length < 2) {
-      toast('Mindestens 2 Optionen nötig','error'); return;
+    if (!text) { toast('Bitte Fragetext eingeben', 'error'); return; }
+    if (pollSelectedType === 'choice' && pollChoiceOptions.filter(o => o.trim()).length < 2) {
+      toast('Mindestens 2 Optionen nötig', 'error'); return;
     }
-    pollQuestions.push({ text, type: selectedType, options: selectedType==='choice' ? [...choiceOptions.filter(o=>o.trim())] : [] });
+    pollQuestions.push({
+      text,
+      type: pollSelectedType,
+      options: pollSelectedType === 'choice' ? [...pollChoiceOptions.filter(o => o.trim())] : []
+    });
     document.getElementById('poll-q-text').value = '';
-    choiceOptions = []; renderChoiceOptions();
+    pollChoiceOptions = []; renderChoiceOptions();
     renderPollQuestionList();
-    toast('Frage hinzugefügt ✓','success');
+    toast('Frage hinzugefügt ✓', 'success');
   };
 
   document.getElementById('btn-poll-start').onclick = startPollLive;
