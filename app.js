@@ -33,10 +33,11 @@ let pollLiveListener = null;
 // ─── MOD TOPBAR ────────────────────────────────────────────────────────────
 function showModTopbar() {
   document.getElementById('mod-topbar').style.display = 'flex';
-  document.getElementById('btn-topbar-welcome').onclick = goToWelcome;        // just sets phase
-  document.getElementById('btn-topbar-welcome-edit').onclick = goToWelcomeEditor; // opens editor
+  document.getElementById('btn-topbar-welcome').onclick = goToWelcome;
+  document.getElementById('btn-topbar-welcome-edit').onclick = goToWelcomeEditor;
   document.getElementById('btn-topbar-poll').onclick    = () => showPollEditor();
   document.getElementById('btn-topbar-preset').onclick  = () => showPresetManager();
+  document.getElementById('btn-topbar-team').onclick    = () => showTeamEditor();
 }
 function goToWelcome() {
   // Just push phase to Firebase - all participant phones flip to welcome screen
@@ -85,6 +86,8 @@ function watchDisplayPhase() {
     else if (p === 'results')     showDisplayResultsIce(s);
     else if (p === 'poll_active') showDisplayPollActive(s);
     else if (p === 'poll_done')   showDisplayPollDone(s);
+    else if (p === 'team_active') showDisplayTeam(s);
+    else if (p === 'team_done')   showDisplayTeamDone(s);
   });
 }
 
@@ -202,6 +205,55 @@ function showDisplayPollActive(s) {
     </div>
     <div class="display-poll-bars">${bars}</div>
     <div class="display-progress-pill" style="margin-top:20px;">${totalVotes} von ${totalParts} haben geantwortet</div>
+  </div>`);
+}
+
+function showDisplayTeam(s) {
+  const team = s.team || {};
+  const c    = (team.challenges || [])[team.currentIdx || 0];
+  if (!c) return;
+  const scores  = team.scores || {};
+  const sorted  = Object.entries(scores).sort((a,b) => b[1]-a[1]);
+  const scoreBar = sorted.map(([name, pts], i) =>
+    `<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+      <div style="font-size:16px;font-weight:700;width:24px;color:var(--muted);">${i+1}</div>
+      <div style="flex:1;font-size:18px;">${name}</div>
+      <div style="font-weight:700;font-size:20px;color:var(--accent);">${pts} Pkt</div>
+    </div>`).join('');
+
+  const m = Math.floor(Math.max(0, team.timerSeconds||0) / 60);
+  const sec = Math.max(0, team.timerSeconds||0) % 60;
+  const timerStr = `${m}:${sec.toString().padStart(2,'0')}`;
+  const timerColor = (team.timerSeconds||0) <= 30 ? 'var(--accent3)' : (team.timerSeconds||0) <= 60 ? 'var(--accent)' : 'var(--text)';
+
+  setDC(`<div class="display-team">
+    <div class="display-team-left">
+      <div class="display-label">CHALLENGE ${(team.currentIdx||0)+1} VON ${team.challenges.length}</div>
+      <div class="display-team-q">${c.text}</div>
+      <div style="font-size:clamp(40px,6vw,80px);font-weight:700;color:${timerColor};margin-top:20px;font-family:monospace;">${timerStr}</div>
+      <div style="color:var(--muted);font-size:16px;margin-top:4px;">⏱ ${c.minutes} Min · ★ ${c.points} Punkte</div>
+    </div>
+    <div class="display-team-right">
+      <div class="display-label">PUNKTE</div>
+      ${scoreBar || '<div style="color:var(--muted)">Noch keine Punkte</div>'}
+    </div>
+  </div>`);
+}
+
+function showDisplayTeamDone(s) {
+  const scores = (s.team || {}).scores || {};
+  const sorted = Object.entries(scores).sort((a,b) => b[1]-a[1]);
+  const rows = sorted.map(([name,pts],i) => `
+    <div style="display:flex;align-items:center;gap:16px;padding:16px 20px;border-radius:var(--r);margin-bottom:10px;
+      background:${i===0?'rgba(232,197,71,.1)':'var(--surface)'};
+      border:1px solid ${i===0?'rgba(232,197,71,.4)':'var(--border)'};animation:fadeUp .3s ease ${i*.1}s both;">
+      <div style="font-size:28px;font-weight:700;width:36px;color:${i===0?'var(--accent)':'var(--muted)'};">${i+1}</div>
+      <div style="flex:1;font-size:clamp(18px,3vw,28px);font-weight:${i===0?600:400};">${name} ${i===0?'👑':''}</div>
+      <div style="font-size:clamp(20px,3vw,32px);font-weight:700;color:${i===0?'var(--accent)':'var(--text)'};">${pts} Pkt</div>
+    </div>`).join('');
+  setDC(`<div class="display-results">
+    <div class="display-results-title">🏆 Endergebnis</div>
+    ${rows}
   </div>`);
 }
 
@@ -705,6 +757,8 @@ function watchSessionPhase() {
     else if (phase==='results')     showParticipantResultsOnPhone();
     else if (phase==='poll_active') watchParticipantPoll();
     else if (phase==='poll_done')   showScreen('screen-participant-idle');
+    else if (phase==='team_active') watchParticipantTeam();
+    else if (phase==='team_done')   showScreen('screen-participant-idle');
   });
 }
 
@@ -1027,4 +1081,430 @@ function loadPreset(preset) {
 
   // Always open poll editor after loading so user can see/edit questions
   showPollEditor();
+}
+
+// ══════════════════════════════════════════════════════════════
+// TEAMSPIEL
+// ══════════════════════════════════════════════════════════════
+
+// ─── State ────────────────────────────────────────────────────
+let teamChallenges   = [];   // [{text, minutes, points}]
+let teamAssignments  = {};   // { teamName: [participantId, ...] }
+let teamScores       = {};   // { teamName: points }
+let teamCurrentIdx   = 0;
+let teamTimerInterval = null;
+let teamTimerSeconds  = 0;
+let teamTimerRunning  = false;
+
+// ─── Open Editor ──────────────────────────────────────────────
+function showTeamEditor() {
+  showScreen('screen-mod-team-editor');
+  teamChallenges  = [];
+  teamAssignments = {};
+  teamScores      = {};
+
+  renderTeamChallengeList();
+  renderTeamAssignment();
+
+  // Random shuffle
+  document.getElementById('btn-team-random').onclick = () => {
+    const count = parseInt(document.getElementById('team-count-input').value) || 2;
+    shuffleTeams(count);
+  };
+
+  // Manual assign
+  document.getElementById('btn-team-manual').onclick = () => {
+    const count = parseInt(document.getElementById('team-count-input').value) || 2;
+    showManualTeamAssignment(count);
+  };
+
+  // Team count change → re-render
+  document.getElementById('team-count-input').oninput = () => {
+    if (Object.keys(teamAssignments).length > 0) {
+      const count = parseInt(document.getElementById('team-count-input').value) || 2;
+      shuffleTeams(count);
+    }
+  };
+
+  // Add challenge
+  document.getElementById('btn-add-challenge').onclick = () => {
+    const text    = document.getElementById('challenge-text').value.trim();
+    const minutes = parseInt(document.getElementById('challenge-time').value)  || 5;
+    const points  = parseInt(document.getElementById('challenge-points').value) || 10;
+    if (!text) { toast('Bitte Aufgabe eingeben', 'error'); return; }
+    teamChallenges.push({ text, minutes, points });
+    document.getElementById('challenge-text').value = '';
+    renderTeamChallengeList();
+    toast('Challenge hinzugefügt ✓', 'success');
+  };
+
+  document.getElementById('btn-team-start').onclick = startTeamGame;
+}
+
+// ─── Random Shuffle ────────────────────────────────────────────
+async function shuffleTeams(count) {
+  const snap = await sessionRef.child('participants').once('value');
+  const parts = Object.values(snap.val() || {});
+  if (parts.length < count) { toast(`Zu wenig Teilnehmer für ${count} Teams`, 'error'); return; }
+
+  // Fisher-Yates shuffle
+  const shuffled = [...parts].sort(() => Math.random() - .5);
+  teamAssignments = {};
+  const teamNames = ['🔴 Team Rot', '🔵 Team Blau', '🟢 Team Grün', '🟡 Team Gelb', '🟣 Team Lila', '🟠 Team Orange'];
+  for (let i = 0; i < count; i++) teamAssignments[teamNames[i]] = [];
+  shuffled.forEach((p, i) => teamAssignments[teamNames[i % count]].push(p));
+
+  renderTeamAssignment();
+  checkTeamStartReady();
+}
+
+// ─── Manual Assignment ─────────────────────────────────────────
+async function showManualTeamAssignment(count) {
+  const snap  = await sessionRef.child('participants').once('value');
+  const parts = Object.values(snap.val() || {});
+  const teamNames = ['🔴 Team Rot', '🔵 Team Blau', '🟢 Team Grün', '🟡 Team Gelb', '🟣 Team Lila', '🟠 Team Orange'].slice(0, count);
+
+  // Init empty teams
+  teamAssignments = {};
+  teamNames.forEach(n => teamAssignments[n] = []);
+
+  const container = document.getElementById('team-assignment-display');
+  container.innerHTML = `
+    <div style="color:var(--muted);font-size:13px;margin-bottom:12px;">Klick auf einen Namen um sein Team zu wechseln:</div>
+    <div id="manual-team-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;"></div>
+  `;
+
+  function renderManualGrid() {
+    const grid = document.getElementById('manual-team-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    teamNames.forEach((tname, ti) => {
+      const col = document.createElement('div');
+      col.className = 'card';
+      col.style.cssText = 'padding:12px;background:var(--surface2);';
+      col.innerHTML = `<div style="font-weight:600;margin-bottom:8px;font-size:13px;">${tname}</div>
+        <div class="manual-members"></div>`;
+      const membersEl = col.querySelector('.manual-members');
+      (teamAssignments[tname] || []).forEach(p => {
+        const chip = document.createElement('div');
+        chip.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:4px 8px;background:var(--surface);border-radius:6px;margin-bottom:4px;font-size:13px;';
+        chip.innerHTML = `<span>${p.name}</span>`;
+        // Click to move to next team
+        chip.style.cursor = 'pointer';
+        chip.onclick = () => {
+          teamAssignments[tname] = teamAssignments[tname].filter(x => x.id !== p.id);
+          const nextTeam = teamNames[(ti + 1) % teamNames.length];
+          teamAssignments[nextTeam].push(p);
+          renderManualGrid();
+          checkTeamStartReady();
+        };
+        membersEl.appendChild(chip);
+      });
+      grid.appendChild(col);
+    });
+
+    // Unassigned
+    const assigned = Object.values(teamAssignments).flat().map(p => p.id);
+    const unassigned = parts.filter(p => !assigned.includes(p.id));
+    if (unassigned.length > 0) {
+      const unCol = document.createElement('div');
+      unCol.className = 'card';
+      unCol.style.cssText = 'padding:12px;border-color:var(--accent3);';
+      unCol.innerHTML = `<div style="font-weight:600;margin-bottom:8px;font-size:13px;color:var(--accent3);">Nicht zugeteilt</div>`;
+      unassigned.forEach(p => {
+        const chip = document.createElement('div');
+        chip.style.cssText = 'padding:4px 8px;background:var(--surface2);border-radius:6px;margin-bottom:4px;font-size:13px;cursor:pointer;';
+        chip.textContent = p.name;
+        chip.onclick = () => {
+          teamAssignments[teamNames[0]].push(p);
+          renderManualGrid();
+          checkTeamStartReady();
+        };
+        unCol.appendChild(chip);
+      });
+      grid.appendChild(unCol);
+    }
+  }
+
+  // Put all in first team initially
+  parts.forEach(p => teamAssignments[teamNames[0]].push(p));
+  renderManualGrid();
+  checkTeamStartReady();
+}
+
+// ─── Render Team Assignment (after shuffle) ────────────────────
+function renderTeamAssignment() {
+  const container = document.getElementById('team-assignment-display');
+  if (Object.keys(teamAssignments).length === 0) {
+    container.innerHTML = '<div class="muted" style="font-size:13px;">Noch keine Teams eingeteilt.</div>';
+    return;
+  }
+  const cards = Object.entries(teamAssignments).map(([name, members]) => `
+    <div style="background:var(--surface2);border-radius:var(--r-sm);padding:10px 14px;flex:1;min-width:120px;">
+      <div style="font-weight:600;font-size:13px;margin-bottom:6px;">${name}</div>
+      ${members.map(p => `<div style="font-size:12px;color:var(--muted);padding:2px 0;">${p.name}</div>`).join('')}
+    </div>`).join('');
+  container.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:8px;">${cards}</div>`;
+}
+
+// ─── Render Challenge List ─────────────────────────────────────
+function renderTeamChallengeList() {
+  const list = document.getElementById('team-challenge-list');
+  list.innerHTML = '';
+  document.getElementById('btn-team-start').disabled =
+    teamChallenges.length === 0 || Object.keys(teamAssignments).length === 0;
+
+  teamChallenges.forEach((c, i) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.cssText = 'padding:12px 16px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start;';
+    card.innerHTML = `
+      <div style="flex:1;">
+        <div style="font-weight:600;margin-bottom:4px;">${i+1}. ${c.text.substring(0,80)}${c.text.length>80?'…':''}</div>
+        <div style="display:flex;gap:10px;">
+          <span class="badge" style="background:var(--surface2);color:var(--muted);">⏱ ${c.minutes} Min</span>
+          <span class="badge" style="background:var(--surface2);color:var(--accent);">★ ${c.points} Punkte</span>
+        </div>
+      </div>
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px;">✕</button>`;
+    card.querySelector('button').onclick = () => { teamChallenges.splice(i,1); renderTeamChallengeList(); };
+    list.appendChild(card);
+  });
+}
+
+function checkTeamStartReady() {
+  const allAssigned = Object.values(teamAssignments).every(t => t.length > 0);
+  document.getElementById('btn-team-start').disabled =
+    teamChallenges.length === 0 || Object.keys(teamAssignments).length === 0 || !allAssigned;
+}
+
+// ─── Start Game ────────────────────────────────────────────────
+function startTeamGame() {
+  teamCurrentIdx = 0;
+  teamScores = {};
+  Object.keys(teamAssignments).forEach(t => teamScores[t] = 0);
+
+  // Save to Firebase
+  sessionRef.child('team').set({
+    challenges:   teamChallenges,
+    assignments:  teamAssignments,
+    scores:       teamScores,
+    currentIdx:   0,
+    timerRunning: false,
+    timerSeconds: teamChallenges[0].minutes * 60,
+    phase:        'challenge'
+  });
+  sessionRef.child('phase').set('team_active');
+  showTeamLive();
+}
+
+// ─── Live Screen ───────────────────────────────────────────────
+function showTeamLive() {
+  showScreen('screen-mod-team-live');
+  const c = teamChallenges[teamCurrentIdx];
+  document.getElementById('team-live-cnum').textContent   = teamCurrentIdx + 1;
+  document.getElementById('team-live-ctotal').textContent = teamChallenges.length;
+  document.getElementById('team-live-title').textContent  = c.text;
+
+  teamTimerSeconds = c.minutes * 60;
+  teamTimerRunning = false;
+  updateTimerDisplay('team-live-timer', teamTimerSeconds);
+
+  // Update Firebase
+  sessionRef.child('team').update({
+    currentIdx:   teamCurrentIdx,
+    timerRunning: false,
+    timerSeconds: teamTimerSeconds,
+    phase:        'challenge'
+  });
+
+  renderTeamLiveCards();
+
+  // Timer toggle
+  document.getElementById('btn-team-timer-toggle').onclick = toggleTeamTimer;
+
+  // Next challenge
+  document.getElementById('btn-team-next-challenge').onclick = () => {
+    clearInterval(teamTimerInterval);
+    teamTimerRunning = false;
+    if (teamCurrentIdx < teamChallenges.length - 1) {
+      teamCurrentIdx++;
+      showTeamLive();
+    } else {
+      endTeamGame();
+    }
+  };
+  document.getElementById('btn-team-next-challenge').textContent =
+    teamCurrentIdx < teamChallenges.length - 1 ? 'Nächste Challenge →' : 'Spiel beenden 🏆';
+
+  document.getElementById('btn-team-end-game').onclick = endTeamGame;
+}
+
+function renderTeamLiveCards() {
+  const container = document.getElementById('team-live-teams');
+  container.innerHTML = '';
+  const c = teamChallenges[teamCurrentIdx];
+
+  Object.entries(teamAssignments).forEach(([tname, members]) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.cssText = 'padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:12px;';
+    card.innerHTML = `
+      <div style="flex:1;">
+        <div style="font-weight:600;margin-bottom:2px;">${tname}</div>
+        <div style="color:var(--muted);font-size:12px;">${members.map(p=>p.name).join(', ')}</div>
+      </div>
+      <div style="font-weight:700;color:var(--accent);font-size:18px;">${teamScores[tname] || 0} Pkt</div>
+      <button class="btn btn-success" style="font-size:12px;padding:6px 12px;">+${c.points} ★</button>
+    `;
+    card.querySelector('button').onclick = () => {
+      teamScores[tname] = (teamScores[tname] || 0) + c.points;
+      sessionRef.child('team/scores').set(teamScores);
+      renderTeamLiveCards();
+      toast(`${tname}: +${c.points} Punkte!`, 'success');
+    };
+    container.appendChild(card);
+  });
+}
+
+// ─── Timer ─────────────────────────────────────────────────────
+function toggleTeamTimer() {
+  if (teamTimerRunning) {
+    clearInterval(teamTimerInterval);
+    teamTimerRunning = false;
+    document.getElementById('btn-team-timer-toggle').textContent = '▶ Timer fortsetzen';
+    sessionRef.child('team/timerRunning').set(false);
+  } else {
+    teamTimerRunning = true;
+    document.getElementById('btn-team-timer-toggle').textContent = '⏸ Timer pausieren';
+    sessionRef.child('team/timerRunning').set(true);
+    sessionRef.child('team/timerSeconds').set(teamTimerSeconds);
+    teamTimerInterval = setInterval(() => {
+      teamTimerSeconds--;
+      updateTimerDisplay('team-live-timer', teamTimerSeconds);
+      if (teamTimerSeconds <= 0) {
+        clearInterval(teamTimerInterval);
+        teamTimerRunning = false;
+        document.getElementById('btn-team-timer-toggle').textContent = '▶ Timer starten';
+        sessionRef.child('team/timerRunning').set(false);
+        toast('⏰ Zeit ist um!', 'info');
+      }
+      // Sync every 5s to Firebase so participant screens stay in sync
+      if (teamTimerSeconds % 5 === 0) sessionRef.child('team/timerSeconds').set(teamTimerSeconds);
+    }, 1000);
+  }
+}
+
+function updateTimerDisplay(elId, seconds) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const m = Math.floor(Math.max(0, seconds) / 60);
+  const s = Math.max(0, seconds) % 60;
+  el.textContent = `${m}:${s.toString().padStart(2,'0')}`;
+  el.style.color = seconds <= 30 ? 'var(--accent3)' : seconds <= 60 ? 'var(--accent)' : 'var(--text)';
+}
+
+// ─── End Game ──────────────────────────────────────────────────
+function endTeamGame() {
+  clearInterval(teamTimerInterval);
+  sessionRef.child('team/phase').set('finished');
+  sessionRef.child('phase').set('team_done');
+  showTeamFinalScores();
+}
+
+function showTeamFinalScores() {
+  showScreen('screen-mod-team-results');
+  const sorted = Object.entries(teamScores).sort((a,b) => b[1] - a[1]);
+  const container = document.getElementById('team-final-scores');
+  container.innerHTML = '';
+  sorted.forEach(([name, pts], i) => {
+    const card = document.createElement('div');
+    card.style.cssText = `display:flex;align-items:center;gap:14px;padding:14px 18px;
+      border-radius:var(--r);margin-bottom:10px;
+      background:${i===0?'rgba(232,197,71,.1)':'var(--surface)'};
+      border:1px solid ${i===0?'rgba(232,197,71,.4)':'var(--border)'};
+      animation:fadeUp .3s ease ${i*.08}s both;`;
+    card.innerHTML = `
+      <div style="width:32px;height:32px;border-radius:50%;background:${i===0?'var(--accent)':'var(--surface2)'};
+        display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;
+        color:${i===0?'#0f0e17':'var(--muted)'};">${i+1}</div>
+      <div style="flex:1;font-weight:${i===0?600:400};">${name} ${i===0?'👑':''}</div>
+      <div style="font-weight:700;font-size:20px;color:${i===0?'var(--accent)':'var(--text)'};">${pts} Pkt</div>`;
+    container.appendChild(card);
+  });
+  document.getElementById('btn-team-new-game').onclick = () => showTeamEditor();
+}
+
+// ─── PARTICIPANT: Team Phase Watcher ──────────────────────────
+// Add to watchSessionPhase:
+// phase === 'team_active' → watchParticipantTeam()
+// phase === 'team_done'   → showParticipantTeamResults()
+
+function watchParticipantTeam() {
+  sessionRef.child('team').on('value', snap => {
+    const team = snap.val();
+    if (!team) return;
+
+    // Find my team
+    const myTeamEntry = Object.entries(team.assignments || {})
+      .find(([, members]) => members.some(p => p.id === myId));
+    const myTeamName    = myTeamEntry ? myTeamEntry[0] : '?';
+    const myTeamMembers = myTeamEntry ? myTeamEntry[1] : [];
+
+    if (team.phase === 'finished') {
+      showParticipantTeamResults(team.scores || {});
+      return;
+    }
+
+    const c = (team.challenges || [])[team.currentIdx || 0];
+    if (!c) return;
+
+    // Show challenge screen
+    showScreen('screen-participant-team-challenge');
+    document.getElementById('p-challenge-badge').textContent  = `Challenge ${(team.currentIdx||0)+1} von ${team.challenges.length}`;
+    document.getElementById('p-challenge-text').textContent   = c.text;
+    document.getElementById('p-challenge-team').textContent   = myTeamName;
+    document.getElementById('p-challenge-members').textContent = myTeamMembers.map(p=>p.name).join(', ');
+
+    // Timer sync
+    updateTimerDisplay('p-challenge-timer', team.timerSeconds || c.minutes * 60);
+
+    // If timer is running, animate it locally
+    if (team.timerRunning) {
+      let localSeconds = team.timerSeconds || 0;
+      clearInterval(window._pTimerInterval);
+      window._pTimerInterval = setInterval(() => {
+        localSeconds--;
+        updateTimerDisplay('p-challenge-timer', localSeconds);
+        if (localSeconds <= 0) clearInterval(window._pTimerInterval);
+      }, 1000);
+    } else {
+      clearInterval(window._pTimerInterval);
+    }
+  });
+}
+
+function showParticipantTeamWait(teamName, members) {
+  showScreen('screen-participant-team-wait');
+  document.getElementById('p-team-name').textContent    = teamName;
+  document.getElementById('p-team-members').textContent = members.map(p=>p.name).join(', ');
+}
+
+function showParticipantTeamResults(scores) {
+  showScreen('screen-participant-team-results');
+  const sorted = Object.entries(scores).sort((a,b) => b[1]-a[1]);
+  const container = document.getElementById('p-team-final-scores');
+  container.innerHTML = '';
+  sorted.forEach(([name, pts], i) => {
+    const row = document.createElement('div');
+    row.style.cssText = `display:flex;align-items:center;gap:12px;padding:10px 14px;
+      border-radius:var(--r-sm);margin-bottom:8px;
+      background:${i===0?'rgba(232,197,71,.1)':'var(--surface2)'};
+      animation:fadeUp .3s ease ${i*.07}s both;`;
+    row.innerHTML = `
+      <div style="width:24px;text-align:center;font-weight:700;color:var(--muted);">${i+1}</div>
+      <div style="flex:1;font-weight:${i===0?600:400};">${name} ${i===0?'👑':''}</div>
+      <div style="font-weight:700;color:${i===0?'var(--accent)':'var(--text)'};">${pts} Pkt</div>`;
+    container.appendChild(row);
+  });
 }

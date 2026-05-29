@@ -802,3 +802,42 @@ body.display-mode {
 .font-btn:hover:not(.active) {
   border-color: var(--muted);
 }
+
+/* ══════════════════════════════════════════════════════════
+   TEAMSPIEL
+══════════════════════════════════════════════════════════ */
+
+/* Timer display */
+.team-timer {
+  font-size: 32px;
+  font-weight: 700;
+  font-family: monospace;
+  color: var(--text);
+  letter-spacing: 2px;
+  flex-shrink: 0;
+}
+.team-timer-sm {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: monospace;
+  color: var(--text);
+  letter-spacing: 1px;
+}
+
+/* Display: Team layout */
+.display-team {
+  display: flex;
+  gap: 60px;
+  align-items: flex-start;
+  width: 100%;
+  max-width: 1100px;
+  animation: fadeUp .5s ease;
+}
+.display-team-left  { flex: 1.4; }
+.display-team-right { flex: 1; min-width: 280px; }
+.display-team-q {
+  font-family: var(--font-d);
+  font-size: clamp(22px, 3.5vw, 46px);
+  line-height: 1.3;
+  margin-top: 10px;
+}
