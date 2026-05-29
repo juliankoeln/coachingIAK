@@ -523,6 +523,7 @@ function showPollEditor() {
 }
 
 function renderPollQuestionList() {
+  console.log('[CoachBoard] renderPollQuestionList called, questions:', pollQuestions.length);
   const list = document.getElementById('poll-question-list');
   list.innerHTML = '';
   document.getElementById('btn-poll-start').disabled = pollQuestions.length === 0;
@@ -925,24 +926,28 @@ function saveCurrentAsPreset() {
   const name = document.getElementById('preset-name-input').value.trim();
   if (!name) { toast('Bitte einen Namen eingeben', 'error'); return; }
 
-  const preset = {
-    name,
-    savedAt: Date.now(),
-    welcome: {
-      emoji:    document.getElementById('welcome-emoji').value.trim()    || '',
-      title:    document.getElementById('welcome-title').value.trim()    || 'Willkommen',
-      subtitle: document.getElementById('welcome-subtitle').value.trim() || '',
-      font:     welcomeFont    || 'DM Serif Display',
-      logo:     welcomeLogoBase64 || null
-    },
-    pollQuestions: pollQuestions || []
-  };
+  // Read welcome from Firebase (source of truth, not DOM fields that may be hidden)
+  sessionRef.child('welcome').once('value', snap => {
+    const w = snap.val() || {};
+    const preset = {
+      name,
+      savedAt: Date.now(),
+      welcome: {
+        emoji:    w.emoji    || '',
+        title:    w.title    || 'Willkommen',
+        subtitle: w.subtitle || '',
+        font:     w.font     || 'DM Serif Display',
+        logo:     w.logo     || null
+      },
+      pollQuestions: pollQuestions.slice() // safe copy of current array
+    };
 
-  const key = name.replace(/[^a-zA-Z0-9äöüÄÖÜß_-]/g, '_');
-  presetsRef.child(key).set(preset).then(() => {
-    toast('Preset gespeichert ✓', 'success');
-    document.getElementById('preset-name-input').value = '';
-    loadPresetList();
+    const key = name.replace(/[^a-zA-Z0-9äöüÄÖÜß_-]/g, '_');
+    presetsRef.child(key).set(preset).then(() => {
+      toast(`"${name}" gespeichert · ${pollQuestions.length} Frage${pollQuestions.length!==1?'n':''} ✓`, 'success');
+      document.getElementById('preset-name-input').value = '';
+      loadPresetList();
+    });
   });
 }
 
@@ -1013,8 +1018,10 @@ function loadPreset(preset) {
 
   // Load poll questions
   const loaded = preset.pollQuestions || [];
+  console.log('[CoachBoard] Preset loaded, questions in preset:', loaded.length, loaded);
   pollQuestions.splice(0, pollQuestions.length);
   loaded.forEach(q => pollQuestions.push(q));
+  console.log('[CoachBoard] pollQuestions after load:', pollQuestions.length, JSON.stringify(pollQuestions));
 
   if (sessionRef) saveWelcome();
 
