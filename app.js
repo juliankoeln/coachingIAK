@@ -86,8 +86,12 @@ function watchDisplayPhase() {
     else if (p === 'results')     showDisplayResultsIce(s);
     else if (p === 'poll_active') showDisplayPollActive(s);
     else if (p === 'poll_done')   showDisplayPollDone(s);
-    else if (p === 'team_active') showDisplayTeam(s);
-    else if (p === 'team_done')   showDisplayTeamDone(s);
+    else if (p === 'team_active')       showDisplayTeam(s);
+    else if (p === 'team_done')         showDisplayTeamDone(s);
+    else if (p === 'cards_active')      showDisplayCards(s);
+    else if (p === 'twotruths_input')   showDisplayTwoTruthsInput(s);
+    else if (p === 'twotruths_vote')    showDisplayTwoTruthsVote(s);
+    else if (p === 'bingo_active')       showDisplayBingo(s);
   });
 }
 
@@ -421,12 +425,33 @@ function showModeratorLobby() {
     document.getElementById('btn-start-icebreaker').disabled = cnt < 2;
   });
 
-  document.getElementById('btn-start-icebreaker').onclick = () => {
-    sessionRef.update({answers:null,votes:null}).then(()=>{
-      sessionRef.child('phase').set('input');
-      showScreen('screen-mod-waiting');
-      watchAnswers();
+  // Icebreaker selector
+  let selectedIcebreaker = null;
+  document.querySelectorAll('.icebreaker-card').forEach(card => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.icebreaker-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      selectedIcebreaker = card.dataset.game;
+      const cnt = parseInt(document.getElementById('participant-count').textContent) || 0;
+      document.getElementById('btn-start-icebreaker').disabled = cnt < 2;
     });
+  });
+
+  document.getElementById('btn-start-icebreaker').onclick = () => {
+    if (!selectedIcebreaker) { toast('Bitte erst ein Spiel wählen', 'error'); return; }
+    if (selectedIcebreaker === 'nobody') {
+      sessionRef.update({answers:null,votes:null}).then(()=>{
+        sessionRef.child('phase').set('input');
+        showScreen('screen-mod-waiting');
+        watchAnswers();
+      });
+    } else if (selectedIcebreaker === 'twotruths') {
+      startTwoTruths();
+    } else if (selectedIcebreaker === 'cards') {
+      showCardsEditor();
+    } else if (selectedIcebreaker === 'bingo') {
+      showBingoEditor();
+    }
   };
   document.getElementById('btn-copy-link').onclick = () =>
     navigator.clipboard.writeText(joinUrl).then(()=>toast('Link kopiert!','success'));
@@ -769,18 +794,23 @@ if (!isDisplay) {
 
 // ─── PARTICIPANT: Watch Phase ──────────────────────────────────────────────
 function watchSessionPhase() {
-  if (phaseListener) sessionRef.child('phase').off('value', phaseListener);
-  phaseListener = sessionRef.child('phase').on('value', snap => {
-    const phase = snap.val();
-    if      (phase==='welcome')     showParticipantWelcome();
-    else if (phase==='lobby')       showParticipantLobby();
-    else if (phase==='input')       showParticipantInput();
-    else if (phase==='voting')      showParticipantVoting();
-    else if (phase==='results')     showParticipantResultsOnPhone();
-    else if (phase==='poll_active') watchParticipantPoll();
-    else if (phase==='poll_done')   showScreen('screen-participant-idle');
-    else if (phase==='team_active') watchParticipantTeam();
-    else if (phase==='team_done')   showScreen('screen-participant-idle');
+  if (phaseListener) sessionRef.off('value', phaseListener);
+  phaseListener = sessionRef.on('value', snap => {
+    const session = snap.val() || {};
+    const phase = session.phase;
+    if      (phase==='welcome')           showParticipantWelcome();
+    else if (phase==='lobby')             showParticipantLobby();
+    else if (phase==='input')             showParticipantInput();
+    else if (phase==='voting')            showParticipantVoting();
+    else if (phase==='results')           showParticipantResultsOnPhone();
+    else if (phase==='poll_active')       watchParticipantPoll();
+    else if (phase==='poll_done')         showScreen('screen-participant-idle');
+    else if (phase==='team_active')       watchParticipantTeam();
+    else if (phase==='team_done')         showScreen('screen-participant-idle');
+    else if (phase==='cards_active')      showParticipantCard(session);
+    else if (phase==='twotruths_input')   showParticipantTwoTruthsInput();
+    else if (phase==='twotruths_vote')    showParticipantTwoTruthsVote(session);
+    else if (phase==='bingo_active')      showParticipantBingo(session);
   });
 }
 
@@ -914,7 +944,7 @@ let pPollAnswered = {}; // idx → answer (so we don't re-show after already ans
 
 function watchParticipantPoll() {
   // Watch for currentIdx changes → render that question
-  if (pPollIdxListener) sessionRef.child('poll/currentIdx').off('value', pPollIdxListener);
+  if (pPollIdxListener) sessionRef.child('poll').off('value', pPollIdxListener);
   pPollIdxListener = sessionRef.child('poll').on('value', snap => {
     const poll = snap.val();
     if (!poll) return;
@@ -989,12 +1019,14 @@ function submitPollAnswer(idx, value, optionsEl) {
 
 const presetsRef = db.ref('presets');
 
-function showPresetManager() {
+let _presetReturnScreen = 'screen-mod-welcome-edit';
+
+function showPresetManager(returnScreen) {
+  _presetReturnScreen = returnScreen || document.querySelector('.screen.active')?.id || 'screen-mod-welcome-edit';
   showScreen('screen-preset-manager');
   loadPresetList();
-
   document.getElementById('btn-save-preset').onclick = saveCurrentAsPreset;
-  document.getElementById('btn-preset-back').onclick  = () => showScreen('screen-mod-welcome-edit');
+  document.getElementById('btn-preset-back').onclick  = () => showScreen(_presetReturnScreen);
 }
 
 function saveCurrentAsPreset() {
@@ -1014,7 +1046,8 @@ function saveCurrentAsPreset() {
         font:     w.font     || 'DM Serif Display',
         logo:     w.logo     || null
       },
-      pollQuestions: pollQuestions.slice() // safe copy of current array
+      pollQuestions:  pollQuestions.slice(),
+      teamChallenges: teamChallenges.slice()
     };
 
     const key = name.replace(/[^a-zA-Z0-9äöüÄÖÜß_-]/g, '_');
@@ -1132,7 +1165,7 @@ let teamTimerRunning  = false;
 // ─── Open Editor ──────────────────────────────────────────────
 function showTeamEditor() {
   showScreen('screen-mod-team-editor');
-  teamChallenges  = [];
+  // Don't reset teamChallenges – may be loaded from preset
   teamAssignments = {};
   teamScores      = {};
 
@@ -1480,10 +1513,6 @@ function showTeamFinalScores() {
 }
 
 // ─── PARTICIPANT: Team Phase Watcher ──────────────────────────
-// Add to watchSessionPhase:
-// phase === 'team_active' → watchParticipantTeam()
-// phase === 'team_done'   → showParticipantTeamResults()
-
 function watchParticipantTeam() {
   sessionRef.child('team').on('value', snap => {
     const team = snap.val();
@@ -1497,6 +1526,11 @@ function watchParticipantTeam() {
 
     if (team.phase === 'finished') {
       showParticipantTeamResults(team.scores || {});
+      return;
+    }
+
+    if (team.phase === 'waiting') {
+      showParticipantTeamWait(myTeamName, myTeamMembers);
       return;
     }
 
@@ -1551,4 +1585,680 @@ function showParticipantTeamResults(scores) {
       <div style="font-weight:700;color:${i===0?'var(--accent)':'var(--text)'};">${pts} Pkt</div>`;
     container.appendChild(row);
   });
+}
+
+// ══════════════════════════════════════════════════════════════
+// ICEBREAKER: PERSÖNLICHKEITSKARTEN
+// ══════════════════════════════════════════════════════════════
+
+const DEFAULT_CARDS = [
+  'Was war dein mutigster Moment im letzten Jahr?',
+  'Welche Fähigkeit würdest du gerne über Nacht erlernen?',
+  'Was würdest du tun, wenn du einen Tag lang unsichtbar wärst?',
+  'Was war das beste Feedback, das du je bekommen hast?',
+  'Wer hat dich beruflich am meisten geprägt und warum?',
+  'Was ist deine unerwartete Superkraft im Team?',
+  'Welches Buch oder welcher Film hat deine Sichtweise verändert?',
+  'Was tust du wenn du dich gestresst fühlst?',
+  'Was war dein größter Fehler aus dem du gelernt hast?',
+  'Ich bin eher Morgen- oder Abendmensch – und wie merkt man das?',
+  'Was motiviert dich wirklich bei der Arbeit?',
+  'Was würdest du deinem jüngeren Ich raten?',
+];
+
+let personalityCards = [];
+
+function showCardsEditor() {
+  personalityCards = [...DEFAULT_CARDS];
+  showScreen('screen-mod-cards-editor');
+  renderCardsList();
+
+  document.getElementById('btn-load-default-cards').onclick = () => {
+    personalityCards = [...DEFAULT_CARDS];
+    renderCardsList();
+    toast('Beispielkarten geladen ✓', 'success');
+  };
+
+  document.getElementById('btn-add-card').onclick = () => {
+    const text = document.getElementById('card-text-input').value.trim();
+    if (!text) { toast('Bitte Text eingeben', 'error'); return; }
+    personalityCards.push(text);
+    document.getElementById('card-text-input').value = '';
+    renderCardsList();
+    toast('Karte hinzugefügt ✓', 'success');
+  };
+
+  document.getElementById('btn-cards-start').onclick = startCardsGame;
+}
+
+function renderCardsList() {
+  const list = document.getElementById('cards-list');
+  list.innerHTML = '';
+  document.getElementById('btn-cards-start').disabled = personalityCards.length === 0;
+
+  personalityCards.forEach((text, i) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.cssText = 'padding:10px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;';
+    card.innerHTML = `
+      <div style="flex:1;font-size:13px;">${i+1}. ${text}</div>
+      <button class="btn btn-ghost" style="padding:4px 8px;font-size:12px;flex-shrink:0;">✕</button>`;
+    card.querySelector('button').onclick = () => {
+      personalityCards.splice(i, 1); renderCardsList();
+    };
+    list.appendChild(card);
+  });
+}
+
+async function startCardsGame() {
+  const snap  = await sessionRef.child('participants').once('value');
+  const parts = Object.values(snap.val() || {});
+
+  // Shuffle cards and assign one per participant
+  const shuffled = [...personalityCards].sort(() => Math.random() - .5);
+  const assignments = {};
+  parts.forEach((p, i) => {
+    assignments[p.id] = shuffled[i % shuffled.length];
+  });
+
+  sessionRef.child('cards').set({ assignments, cards: personalityCards });
+  sessionRef.child('phase').set('cards_active');
+  showCardsLive(parts, assignments);
+}
+
+function showCardsLive(parts, assignments) {
+  showScreen('screen-mod-cards-live');
+
+  // Show overview of who got what
+  const overview = document.getElementById('mod-cards-overview');
+  overview.innerHTML = '';
+  parts.forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'card';
+    row.style.cssText = 'padding:12px 16px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start;';
+    row.innerHTML = `
+      <div style="font-weight:600;min-width:100px;">${p.name}</div>
+      <div style="color:var(--muted);font-size:13px;font-style:italic;">"${assignments[p.id]}"</div>`;
+    overview.appendChild(row);
+  });
+
+  document.getElementById('btn-cards-end').onclick = () => {
+    sessionRef.child('phase').set('welcome');
+    goToWelcome();
+    toast('Icebreaker beendet', 'info');
+  };
+}
+
+// ── Display: cards ──────────────────────────────────────────────
+function showDisplayTwoTruthsInput(s) {
+  const count = Object.keys(s.ttStatements || {}).length;
+  const total = Object.keys(s.participants || {}).length;
+  setDC(`<div class="display-centered">
+    <div class="display-big-emoji">🎭</div>
+    <div class="display-big-title">2 Wahrheiten, 1 Lüge</div>
+    <div class="display-big-sub">Schreib 2 wahre und 1 falsche Aussage über dich</div>
+    <div class="display-progress-pill">${count} von ${total} eingegangen</div>
+  </div>`);
+}
+
+function showDisplayCards(s) {
+  setDC(`<div class="display-centered">
+    <div class="display-big-emoji">🃏</div>
+    <div class="display-big-title">Persönlichkeitskarten</div>
+    <div class="display-big-sub">Schaut auf euer Handy und lest eure Karte vor.</div>
+  </div>`);
+}
+
+// ── Participant: cards ──────────────────────────────────────────
+function showParticipantCard(s) {
+  const cards = s.cards || {};
+  const myCard = (cards.assignments || {})[myId];
+  if (!myCard) return;
+  document.getElementById('p-card-text').textContent = myCard;
+  showScreen('screen-participant-card');
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// ICEBREAKER: 2 WAHRHEITEN, 1 LÜGE
+// ══════════════════════════════════════════════════════════════
+
+let ttPersonList    = [];   // [{id, name, statements:[s1,s2,s3], lieIndex}]
+let ttCurrentPerson = 0;    // which person we're voting on
+let ttVoteListener  = null;
+
+function startTwoTruths() {
+  sessionRef.update({ ttStatements: null, ttVotes: null });
+  sessionRef.child('phase').set('twotruths_input');
+  showScreen('screen-mod-twotruths-waiting');
+  watchTwoTruthsInput();
+}
+
+function watchTwoTruthsInput() {
+  sessionRef.child('ttStatements').on('value', snap => {
+    const statements = snap.val() || {};
+    const count = Object.keys(statements).length;
+    sessionRef.child('participants').once('value', ps => {
+      const total = Object.keys(ps.val() || {}).length;
+      document.getElementById('twotruths-input-progress').textContent =
+        `${count} von ${total} eingegangen`;
+      document.getElementById('btn-twotruths-start-voting').disabled = count < 2;
+    });
+  });
+
+  document.getElementById('btn-twotruths-start-voting').onclick = async () => {
+    const [stSnap, psSnap] = await Promise.all([
+      sessionRef.child('ttStatements').once('value'),
+      sessionRef.child('participants').once('value')
+    ]);
+    const statements = stSnap.val() || {};
+    const parts      = psSnap.val() || {};
+    const nameMap    = {};
+    Object.entries(parts).forEach(([id,p]) => nameMap[id] = p.name);
+
+    // Build person list – only those who submitted
+    ttPersonList = Object.entries(statements).map(([id, data]) => ({
+      id, name: nameMap[id] || '?',
+      statements: data.statements,
+      lieIndex:   data.lieIndex
+    }));
+    ttCurrentPerson = 0;
+
+    sessionRef.child('ttVotes').remove();
+    sessionRef.child('phase').set('twotruths_vote');
+    sessionRef.child('ttCurrentPerson').set(ttCurrentPerson);
+    showTwoTruthsVoteScreen();
+  };
+}
+
+function showTwoTruthsVoteScreen() {
+  showScreen('screen-mod-twotruths-vote');
+  const person = ttPersonList[ttCurrentPerson];
+  document.getElementById('tt-person-num').textContent   = ttCurrentPerson + 1;
+  document.getElementById('tt-person-total').textContent = ttPersonList.length;
+  document.getElementById('tt-person-name').textContent  = person.name;
+
+  // Show statements (shuffled so position doesn't give away lie)
+  const stDisplay = document.getElementById('tt-statements-display');
+  stDisplay.innerHTML = '';
+  person.statements.forEach((s, i) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.cssText = 'padding:14px 18px;margin-bottom:8px;font-family:var(--font-d);font-size:18px;font-style:italic;';
+    card.innerHTML = `<span style="color:var(--muted);font-size:13px;font-style:normal;margin-right:8px;">${i+1}.</span>"${s}"`;
+    stDisplay.appendChild(card);
+  });
+
+  // Live vote listener
+  if (ttVoteListener) sessionRef.child('ttVotes/' + ttCurrentPerson).off('value', ttVoteListener);
+  ttVoteListener = sessionRef.child('ttVotes/' + ttCurrentPerson).on('value', snap => {
+    const votes = snap.val() || {};
+    const total = Object.keys(votes).length;
+    document.getElementById('tt-vote-count').textContent = total;
+
+    // Count per statement index
+    const counts = [0, 0, 0];
+    Object.values(votes).forEach(v => { if (counts[v] !== undefined) counts[v]++; });
+    const maxVal = Math.max(...counts, 1);
+
+    const barsEl = document.getElementById('tt-vote-bars');
+    barsEl.innerHTML = '';
+    counts.forEach((cnt, i) => {
+      const pct    = Math.round((cnt / maxVal) * 100);
+      const pctTot = total > 0 ? Math.round((cnt / total) * 100) : 0;
+      const row = document.createElement('div');
+      row.className = 'live-bar-row';
+      row.innerHTML = `
+        <div class="live-bar-label">${i+1}</div>
+        <div class="live-bar-track"><div class="live-bar-fill" style="width:${pct}%;"></div></div>
+        <div class="live-bar-val">${cnt} <span class="muted" style="font-size:12px;">${pctTot}%</span></div>`;
+      barsEl.appendChild(row);
+    });
+  });
+
+  document.getElementById('btn-tt-next-person').onclick = () => showTwoTruthsReveal();
+  document.getElementById('btn-tt-next-person').textContent = 'Auflösung →';
+}
+
+function showTwoTruthsReveal() {
+  if (ttVoteListener) sessionRef.child('ttVotes/' + ttCurrentPerson).off('value', ttVoteListener);
+  showScreen('screen-mod-twotruths-reveal');
+  const person = ttPersonList[ttCurrentPerson];
+
+  const content = document.getElementById('tt-reveal-content');
+  content.innerHTML = '';
+
+  person.statements.forEach((s, i) => {
+    const isLie = i === person.lieIndex;
+    const card = document.createElement('div');
+    card.style.cssText = `padding:16px 20px;border-radius:var(--r);margin-bottom:10px;
+      background:${isLie ? 'rgba(249,123,107,.1)' : 'rgba(93,223,176,.1)'};
+      border:2px solid ${isLie ? 'var(--accent3)' : 'var(--success)'};
+      animation:fadeUp .3s ease ${i*.1}s both;`;
+    card.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+        <span style="font-size:20px;">${isLie ? '❌' : '✓'}</span>
+        <span style="font-weight:700;color:${isLie ? 'var(--accent3)' : 'var(--success)'};">
+          ${isLie ? 'Die Lüge!' : 'Wahr'}
+        </span>
+      </div>
+      <div style="font-family:var(--font-d);font-size:18px;font-style:italic;">"${s}"</div>`;
+    content.appendChild(card);
+  });
+
+  const isLast = ttCurrentPerson >= ttPersonList.length - 1;
+  document.getElementById('btn-tt-next-reveal').textContent = isLast ? 'Fertig ✓' : 'Nächste Person →';
+  document.getElementById('btn-tt-next-reveal').onclick = () => {
+    if (isLast) {
+      sessionRef.child('phase').set('welcome');
+      goToWelcome();
+    } else {
+      ttCurrentPerson++;
+      sessionRef.child('ttCurrentPerson').set(ttCurrentPerson);
+      sessionRef.child('phase').set('twotruths_vote');
+      showTwoTruthsVoteScreen();
+    }
+  };
+  document.getElementById('btn-tt-end').onclick = () => {
+    sessionRef.child('phase').set('welcome');
+    goToWelcome();
+  };
+}
+
+// ── Display: Two Truths ─────────────────────────────────────────
+function showDisplayTwoTruthsVote(s) {
+  const idx    = s.ttCurrentPerson || 0;
+  const parts  = s.participants || {};
+  const stmts  = (s.ttStatements || {})[Object.keys(parts)[idx]];
+  const votes  = (s.ttVotes || {})[idx] || {};
+  const total  = Object.keys(votes).length;
+
+  // Get person name
+  sessionRef.child('participants/' + Object.keys(parts)[idx]).once('value', snap => {
+    const name = snap.val()?.name || '?';
+    const counts = [0,0,0];
+    Object.values(votes).forEach(v => { if(counts[v]!==undefined) counts[v]++; });
+    const maxVal = Math.max(...counts, 1);
+    const bars = counts.map((cnt,i) => {
+      const pct = Math.round((cnt/maxVal)*100);
+      return `<div class="display-bar-row">
+        <div class="display-bar-label">Aussage ${i+1}</div>
+        <div class="display-bar-track"><div class="display-bar-fill" style="width:${pct}%;"></div></div>
+        <div class="display-bar-val">${cnt}</div>
+      </div>`;
+    }).join('');
+
+    const stmtCards = stmts ? stmts.statements.map((s,i) =>
+      `<div style="font-size:clamp(16px,2vw,22px);margin-bottom:10px;padding:10px 16px;background:var(--surface);border-radius:var(--r-sm);">
+        <span style="color:var(--muted);margin-right:8px;">${i+1}.</span>"${s}"
+      </div>`).join('') : '';
+
+    setDC(`<div class="display-poll" style="max-width:800px;">
+      <div class="display-poll-header">
+        <div class="display-label">2 WAHRHEITEN, 1 LÜGE · ${name}</div>
+        <div class="display-poll-q" style="font-size:clamp(20px,3vw,36px);">Welche Aussage ist die Lüge?</div>
+      </div>
+      <div style="margin:16px 0;">${stmtCards}</div>
+      <div class="display-poll-bars">${bars}</div>
+      <div class="display-progress-pill" style="margin-top:16px;">${total} Stimmen</div>
+    </div>`);
+  });
+}
+
+// ── Participant: two truths submit ──────────────────────────────
+function showParticipantTwoTruthsInput() {
+  // Reset fields
+  ['tt-input-1','tt-input-2','tt-input-3'].forEach(id => document.getElementById(id).value = '');
+  document.querySelectorAll('.lie-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('btn-tt-submit').disabled = true;
+  let selectedLie = null;
+
+  showScreen('screen-participant-twotruths-input');
+
+  // Lie selector
+  document.querySelectorAll('.lie-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.lie-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      selectedLie = parseInt(btn.dataset.lie);
+      checkTTReady();
+    };
+  });
+
+  ['tt-input-1','tt-input-2','tt-input-3'].forEach(id =>
+    document.getElementById(id).oninput = checkTTReady);
+
+  function checkTTReady() {
+    const s1 = document.getElementById('tt-input-1').value.trim();
+    const s2 = document.getElementById('tt-input-2').value.trim();
+    const s3 = document.getElementById('tt-input-3').value.trim();
+    document.getElementById('btn-tt-submit').disabled = !(s1 && s2 && s3 && selectedLie !== null);
+  }
+
+  document.getElementById('btn-tt-submit').onclick = () => {
+    const statements = [
+      document.getElementById('tt-input-1').value.trim(),
+      document.getElementById('tt-input-2').value.trim(),
+      document.getElementById('tt-input-3').value.trim()
+    ];
+    sessionRef.child('ttStatements/' + myId).set({ statements, lieIndex: selectedLie });
+    showScreen('screen-participant-twotruths-wait');
+  };
+}
+
+function showParticipantTwoTruthsVote(s) {
+  const idx    = s.ttCurrentPerson || 0;
+  const stmts  = (s.ttStatements || {})[Object.keys(s.participants || {})[idx]];
+  if (!stmts) return;
+
+  // Don't vote on your own statements
+  const personId = Object.keys(s.participants || {})[idx];
+  if (personId === myId) {
+    showScreen('screen-participant-twotruths-wait');
+    return;
+  }
+
+  showScreen('screen-participant-twotruths-vote');
+  document.getElementById('p-tt-person-name').textContent = (s.participants[personId]?.name || '?') + '\'s Aussagen';
+  document.getElementById('p-tt-vote-sent').style.display = 'none';
+
+  const opts = document.getElementById('p-tt-vote-options');
+  opts.innerHTML = '';
+  opts.style.display = 'block';
+
+  stmts.statements.forEach((stmt, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'poll-choice-btn';
+    btn.innerHTML = `<span style="color:var(--muted);margin-right:8px;">${i+1}.</span>"${stmt}"`;
+    btn.onclick = () => {
+      sessionRef.child('ttVotes/' + idx + '/' + myId).set(i);
+      opts.style.display = 'none';
+      document.getElementById('p-tt-vote-sent').style.display = 'block';
+    };
+    opts.appendChild(btn);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// ICEBREAKER: TEAM-BINGO
+// ══════════════════════════════════════════════════════════════
+
+const BINGO_DEFAULTS = [
+  'Hat mehr als 2 Haustiere',
+  'Kann ein Instrument spielen',
+  'War schon mal im Ausland berufstätig',
+  'Trinkt keinen Kaffee',
+  'Hat einen Marathon gelaufen',
+  'Spricht mehr als 2 Sprachen',
+  'Hat schon mal auf einer Bühne gestanden',
+  'Kocht leidenschaftlich gerne',
+  'Hat ein ungewöhnliches Hobby',
+  'Ist Frühaufsteher (vor 6 Uhr)',
+  'Hat schon mal ein Ehrenamt ausgeübt',
+  'Ist mit dem Fahrrad zur Arbeit gefahren',
+  'Hat schon mal ein Buch gelesen das sein Leben verändert hat',
+  'Kann jonglieren',
+  'Hat mehr als 3 Geschwister',
+  'War schon mal auf einem anderen Kontinent',
+  'Hat schon mal etwas selbst gebaut oder genäht',
+  'Meditiert regelmäßig',
+  'Hat schon mal eine Sprache gelernt und wieder vergessen',
+  'Ist in einer anderen Stadt aufgewachsen als jetzt',
+];
+
+let bingoStatements = [];
+let bingoSize       = 3;
+let bingoListener   = null;
+
+function showBingoEditor() {
+  bingoStatements = [...BINGO_DEFAULTS];
+  bingoSize = 3;
+  showScreen('screen-mod-bingo-editor');
+  renderBingoStatementsList();
+  updateBingoSizeInfo();
+
+  // Size buttons
+  document.querySelectorAll('.bingo-size-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.bingo-size-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      bingoSize = parseInt(btn.dataset.size);
+      updateBingoSizeInfo();
+    };
+  });
+
+  document.getElementById('btn-load-bingo-defaults').onclick = () => {
+    bingoStatements = [...BINGO_DEFAULTS];
+    renderBingoStatementsList();
+    toast('Beispiele geladen ✓', 'success');
+  };
+
+  document.getElementById('btn-add-bingo-statement').onclick = () => {
+    const text = document.getElementById('bingo-statement-input').value.trim();
+    if (!text) { toast('Bitte Text eingeben', 'error'); return; }
+    bingoStatements.push(text);
+    document.getElementById('bingo-statement-input').value = '';
+    renderBingoStatementsList();
+    toast('Aussage hinzugefügt ✓', 'success');
+  };
+
+  document.getElementById('btn-bingo-start').onclick = startBingo;
+}
+
+function updateBingoSizeInfo() {
+  const needed = bingoSize * bingoSize;
+  document.getElementById('bingo-min-count').textContent = needed;
+  document.getElementById('bingo-current-count').textContent = bingoStatements.length;
+  document.getElementById('btn-bingo-start').disabled = bingoStatements.length < needed;
+}
+
+function renderBingoStatementsList() {
+  const list = document.getElementById('bingo-statements-list');
+  list.innerHTML = '';
+  updateBingoSizeInfo();
+
+  bingoStatements.forEach((text, i) => {
+    const row = document.createElement('div');
+    row.className = 'card';
+    row.style.cssText = 'padding:8px 14px;margin-bottom:6px;display:flex;align-items:center;gap:10px;';
+    row.innerHTML = `
+      <div style="flex:1;font-size:13px;">${i+1}. ${text}</div>
+      <button class="btn btn-ghost" style="padding:3px 8px;font-size:12px;">✕</button>`;
+    row.querySelector('button').onclick = () => {
+      bingoStatements.splice(i, 1); renderBingoStatementsList();
+    };
+    list.appendChild(row);
+  });
+}
+
+// ─── Start Bingo ───────────────────────────────────────────────
+async function startBingo() {
+  const snap  = await sessionRef.child('participants').once('value');
+  const parts = Object.values(snap.val() || {});
+  const needed = bingoSize * bingoSize;
+
+  // Generate unique shuffled grid per participant
+  const grids = {};
+  parts.forEach(p => {
+    const shuffled = [...bingoStatements].sort(() => Math.random() - .5).slice(0, needed);
+    grids[p.id] = shuffled;
+  });
+
+  await sessionRef.child('bingo').set({
+    size:       bingoSize,
+    statements: bingoStatements,
+    grids,
+    checked:    {},   // participantId → [index, index, ...]
+    bingos:     {},   // participantId → timestamp
+  });
+
+  sessionRef.child('phase').set('bingo_active');
+  showBingoLive();
+}
+
+// ─── Mod: Live ─────────────────────────────────────────────────
+function showBingoLive() {
+  showScreen('screen-mod-bingo-live');
+
+  if (bingoListener) sessionRef.child('bingo').off('value', bingoListener);
+  bingoListener = sessionRef.child('bingo').on('value', snap => {
+    const bingo = snap.val();
+    if (!bingo) return;
+    renderBingoProgress(bingo);
+  });
+
+  document.getElementById('btn-bingo-end').onclick = () => {
+    if (bingoListener) sessionRef.child('bingo').off('value', bingoListener);
+    sessionRef.child('phase').set('welcome');
+    goToWelcome();
+    toast('Bingo beendet', 'info');
+  };
+}
+
+function renderBingoProgress(bingo) {
+  const grids   = bingo.grids   || {};
+  const checked = bingo.checked || {};
+  const bingos  = bingo.bingos  || {};
+  const size    = bingo.size    || 3;
+
+  // Bingo count
+  const bingoCount = Object.keys(bingos).length;
+  document.getElementById('bingo-bingo-count').textContent = bingoCount;
+
+  // Bingo shouts
+  const shoutsEl = document.getElementById('bingo-shouts');
+  shoutsEl.innerHTML = '';
+  Object.entries(bingos).sort((a,b)=>a[1]-b[1]).forEach(([pid, ts], i) => {
+    sessionRef.child('participants/' + pid).once('value', pSnap => {
+      const name = pSnap.val()?.name || '?';
+      const div = document.createElement('div');
+      div.style.cssText = `display:flex;align-items:center;gap:10px;padding:10px 16px;
+        border-radius:var(--r-sm);margin-bottom:6px;
+        background:rgba(232,197,71,.1);border:1px solid rgba(232,197,71,.4);
+        animation:pop .4s ease;`;
+      div.innerHTML = `<span style="font-size:24px;">🎉</span>
+        <span style="font-weight:600;">${name}</span>
+        <span class="badge badge-yellow">#${i+1}</span>`;
+      shoutsEl.appendChild(div);
+    });
+  });
+
+  // Progress per participant
+  const progressEl = document.getElementById('bingo-progress-list');
+  progressEl.innerHTML = '';
+  Object.entries(grids).forEach(([pid, grid]) => {
+    const myChecked = checked[pid] || [];
+    const pct = Math.round((myChecked.length / (size * size)) * 100);
+    const hasBingo = !!bingos[pid];
+
+    sessionRef.child('participants/' + pid).once('value', pSnap => {
+      const name = pSnap.val()?.name || '?';
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;';
+      row.innerHTML = `
+        <div style="width:80px;font-size:13px;font-weight:${hasBingo?600:400};
+          color:${hasBingo?'var(--accent)':'var(--text)'};">${name}</div>
+        <div style="flex:1;height:20px;background:var(--surface2);border-radius:99px;overflow:hidden;">
+          <div style="height:100%;width:${pct}%;background:${hasBingo?'var(--accent)':'var(--accent2)'};
+            border-radius:99px;transition:width .4s;"></div>
+        </div>
+        <div style="font-size:12px;color:var(--muted);width:36px;">${myChecked.length}/${size*size}</div>
+        ${hasBingo ? '<span style="font-size:16px;">🎉</span>' : ''}`;
+      progressEl.appendChild(row);
+    });
+  });
+}
+
+// ─── Display: Bingo ────────────────────────────────────────────
+function showDisplayBingo(s) {
+  const bingo  = s.bingo || {};
+  const bingos = bingo.bingos || {};
+  const count  = Object.keys(bingos).length;
+
+  setDC(`<div class="display-centered">
+    <div style="font-size:clamp(60px,10vw,120px);margin-bottom:16px;">🎯</div>
+    <div class="display-big-title">Team-Bingo</div>
+    <div class="display-big-sub">Geh durch den Raum – finde Menschen die zu deinen Feldern passen!</div>
+    ${count > 0 ? `<div class="display-progress-pill" style="margin-top:20px;background:rgba(232,197,71,.15);color:var(--accent);border-color:var(--accent);">🎉 ${count}× Bingo!</div>` : ''}
+  </div>`);
+}
+
+// ─── Participant: Bingo ────────────────────────────────────────
+let pBingoChecked = [];
+let pBingoGrid    = [];
+let pBingoSize    = 3;
+let pBingoListener = null;
+
+function showParticipantBingo(s) {
+  const bingo = s.bingo || {};
+  pBingoSize    = bingo.size || 3;
+  pBingoGrid    = (bingo.grids || {})[myId] || [];
+  pBingoChecked = [...((bingo.checked || {})[myId] || [])];
+
+  renderParticipantBingoGrid();
+  showScreen('screen-participant-bingo');
+
+  // Listen for external updates (e.g. if mod resets)
+  if (pBingoListener) sessionRef.child('bingo/checked/' + myId).off('value', pBingoListener);
+  pBingoListener = sessionRef.child('bingo/checked/' + myId).on('value', snap => {
+    pBingoChecked = snap.val() || [];
+    renderParticipantBingoGrid();
+  });
+
+  document.getElementById('btn-p-bingo').onclick = () => {
+    sessionRef.child('bingo/bingos/' + myId).set(Date.now());
+    showScreen('screen-participant-bingo-won');
+  };
+}
+
+function renderParticipantBingoGrid() {
+  const grid = document.getElementById('p-bingo-grid');
+  grid.innerHTML = '';
+  grid.style.gridTemplateColumns = `repeat(${pBingoSize}, 1fr)`;
+
+  pBingoGrid.forEach((text, i) => {
+    const cell = document.createElement('div');
+    const isChecked = pBingoChecked.includes(i);
+    cell.className = 'bingo-cell' + (isChecked ? ' checked' : '');
+    cell.textContent = text;
+    cell.onclick = () => toggleBingoCell(i);
+    grid.appendChild(cell);
+  });
+
+  // Check for bingo
+  const hasBingo = checkBingoWin();
+  const bingoBtn = document.getElementById('btn-p-bingo');
+  bingoBtn.style.display = hasBingo ? 'flex' : 'none';
+  document.getElementById('p-bingo-status').textContent =
+    hasBingo ? '🎉 Du hast Bingo!' : 'Geh durch den Raum!';
+}
+
+function toggleBingoCell(idx) {
+  if (pBingoChecked.includes(idx)) {
+    pBingoChecked = pBingoChecked.filter(i => i !== idx);
+  } else {
+    pBingoChecked = [...pBingoChecked, idx];
+  }
+  sessionRef.child('bingo/checked/' + myId).set(pBingoChecked);
+  renderParticipantBingoGrid();
+}
+
+function checkBingoWin() {
+  const s = pBingoSize;
+  const c = pBingoChecked;
+
+  // Rows
+  for (let r = 0; r < s; r++) {
+    if ([...Array(s)].every((_, col) => c.includes(r * s + col))) return true;
+  }
+  // Columns
+  for (let col = 0; col < s; col++) {
+    if ([...Array(s)].every((_, r) => c.includes(r * s + col))) return true;
+  }
+  // Diagonal \
+  if ([...Array(s)].every((_, i) => c.includes(i * s + i))) return true;
+  // Diagonal /
+  if ([...Array(s)].every((_, i) => c.includes(i * s + (s - 1 - i)))) return true;
+
+  return false;
 }

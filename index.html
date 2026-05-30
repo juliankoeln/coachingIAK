@@ -127,12 +127,28 @@
       </div>
       <div id="participant-list"><span class="muted" style="font-size:13px;">Warten auf Teilnehmer…</span></div>
     </div>
-    <div class="card" style="border-color:rgba(232,197,71,.3);">
-      <h3>Icebreaker: Nobody is Perfect</h3>
-      <p class="mt-4 mb-16">Jede Person schreibt eine überraschende Wahrheit über sich.</p>
-      <button id="btn-start-icebreaker" class="btn btn-primary btn-full" disabled>Icebreaker starten →</button>
-      <p class="muted mt-8" style="font-size:12px;text-align:center;">Mindestens 2 Teilnehmer nötig</p>
+    <!-- Icebreaker Auswahl -->
+    <div class="icebreaker-grid">
+      <div class="icebreaker-card" id="ice-card-nobody" data-game="nobody">
+        <div class="icebreaker-card-icon">🕵️</div>
+        <div class="icebreaker-card-title">Nobody is Perfect</div>
+        <div class="icebreaker-card-desc">Schreib eine überraschende Wahrheit – die Gruppe rät wer es war.</div>
+      </div>
+      <div class="icebreaker-card" id="ice-card-twotruths" data-game="twotruths">
+        <div class="icebreaker-card-icon">🎭</div>
+        <div class="icebreaker-card-title">2 Wahrheiten, 1 Lüge</div>
+        <div class="icebreaker-card-desc">Jeder schreibt 3 Aussagen – 2 wahr, 1 gelogen. Wer findet die Lüge?</div>
+      </div>
+      <div class="icebreaker-card" id="ice-card-cards" data-game="cards">
+        <div class="icebreaker-card-icon">🃏</div>
+        <div class="icebreaker-card-title">Persönlichkeitskarten</div>
+        <div class="icebreaker-card-desc">Jeder zieht eine Frage und stellt sich damit kurz vor.</div>
+      </div>
     </div>
+    <button id="btn-start-icebreaker" class="btn btn-primary btn-full" disabled style="margin-top:12px;">
+      Icebreaker starten →
+    </button>
+    <p class="muted mt-8" style="font-size:12px;text-align:center;">Spiel wählen · Mindestens 2 Teilnehmer nötig</p>
   </div>
 </div>
 
@@ -577,6 +593,283 @@
       <span class="emoji-big">🏆</span>
       <h2>Endergebnis</h2>
       <div id="p-team-final-scores" style="margin-top:16px;text-align:left;"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: PERSÖNLICHKEITSKARTEN EDITOR ══════════════════════════════════ -->
+<div id="screen-mod-cards-editor" class="screen has-topbar">
+  <div class="page">
+    <div class="flex-between mb-16">
+      <h2 style="margin:0;">🃏 Kartenstapel</h2>
+      <button id="btn-cards-start" class="btn btn-primary" disabled>Spiel starten →</button>
+    </div>
+    <p class="muted mb-20">Erstelle Fragen oder Aussagen. Jeder Teilnehmer zieht dann eine zufällige Karte.</p>
+
+    <div id="cards-list" style="margin-bottom:16px;"></div>
+
+    <div class="card" style="border-style:dashed;">
+      <h3 style="margin-bottom:12px;">＋ Neue Karte</h3>
+      <label class="field-label">FRAGE ODER AUSSAGE</label>
+      <textarea id="card-text-input" rows="2"
+        placeholder="z.B. »Was war dein mutigster Moment im letzten Jahr?«"
+        maxlength="200"></textarea>
+      <div style="display:flex;gap:8px;margin-top:4px;">
+        <button id="btn-add-card" class="btn btn-secondary">Karte hinzufügen</button>
+        <button id="btn-load-default-cards" class="btn btn-ghost" style="font-size:12px;">📚 Beispiele laden</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: PERSÖNLICHKEITSKARTEN LIVE ════════════════════════════════════ -->
+<div id="screen-mod-cards-live" class="screen has-topbar">
+  <div class="page">
+    <div class="flex-between mb-16">
+      <div>
+        <div style="color:var(--muted);font-size:12px;font-weight:600;letter-spacing:1px;">PERSÖNLICHKEITSKARTEN</div>
+        <div style="color:var(--muted);font-size:13px;margin-top:4px;">Teilnehmer haben ihre Karte erhalten</div>
+      </div>
+      <button id="btn-cards-end" class="btn btn-ghost">Beenden</button>
+    </div>
+    <div class="card card-glow center" style="margin-bottom:16px;">
+      <div style="font-size:40px;margin-bottom:12px;">🃏</div>
+      <h2 style="margin-bottom:8px;">Karten wurden verteilt!</h2>
+      <p>Jeder hat jetzt eine zufällige Frage auf seinem Handy.<br>Geht reihum – wer möchte, liest seine Karte vor.</p>
+    </div>
+    <div id="mod-cards-overview"></div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: 2 WAHRHEITEN 1 LÜGE – EINGABE WARTEN ══════════════════════════ -->
+<div id="screen-mod-twotruths-waiting" class="screen has-topbar">
+  <div class="page" style="display:flex;flex-direction:column;justify-content:center;min-height:calc(100vh - 56px);">
+    <div class="card card-glow center">
+      <div class="waiting-icon"></div>
+      <h2>Aussagen kommen rein…</h2>
+      <p class="mt-8 mb-16">Jeder schreibt 2 Wahrheiten und 1 Lüge über sich.</p>
+      <div id="twotruths-input-progress" class="progress-text">0 von ? eingegangen</div>
+      <button id="btn-twotruths-start-voting" class="btn btn-primary btn-full" disabled>Abstimmung starten →</button>
+      <p class="muted mt-8" style="font-size:12px;">Mindestens 2 Teilnehmer nötig</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: 2 WAHRHEITEN 1 LÜGE – ABSTIMMUNG ══════════════════════════════ -->
+<div id="screen-mod-twotruths-vote" class="screen has-topbar">
+  <div class="page">
+    <div class="flex-between mb-16">
+      <div>
+        <div style="color:var(--muted);font-size:12px;font-weight:600;letter-spacing:1px;">
+          PERSON <span id="tt-person-num">1</span> VON <span id="tt-person-total">?</span>
+        </div>
+        <h2 id="tt-person-name" style="margin:4px 0 0;"></h2>
+      </div>
+      <button id="btn-tt-next-person" class="btn btn-primary">Nächste Person →</button>
+    </div>
+    <div id="tt-statements-display" style="margin-bottom:16px;"></div>
+    <div class="card" style="padding:14px;">
+      <div class="flex-between">
+        <div style="font-size:13px;color:var(--muted);">Abstimmungen</div>
+        <span class="badge badge-success"><span id="tt-vote-count">0</span> Stimmen</span>
+      </div>
+      <div id="tt-vote-bars" style="margin-top:12px;"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: 2 WAHRHEITEN 1 LÜGE – AUFLÖSUNG ═══════════════════════════════ -->
+<div id="screen-mod-twotruths-reveal" class="screen has-topbar">
+  <div class="page">
+    <div class="flex-between mb-20">
+      <h2 style="margin:0;">🎭 Auflösung</h2>
+      <div style="display:flex;gap:8px;">
+        <button id="btn-tt-next-reveal" class="btn btn-primary">Nächste →</button>
+        <button id="btn-tt-end" class="btn btn-ghost">Beenden</button>
+      </div>
+    </div>
+    <div id="tt-reveal-content"></div>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: PERSÖNLICHKEITSKARTE ═══════════════════════════════════ -->
+<div id="screen-participant-card" class="screen">
+  <div class="page" style="display:flex;flex-direction:column;justify-content:center;min-height:100vh;">
+    <div class="card card-glow" style="text-align:center;">
+      <div style="font-size:48px;margin-bottom:16px;">🃏</div>
+      <div style="font-size:11px;font-weight:600;letter-spacing:1.5px;color:var(--muted);margin-bottom:12px;">DEINE KARTE</div>
+      <div id="p-card-text" style="font-family:var(--font-d);font-size:22px;line-height:1.4;margin-bottom:24px;"></div>
+      <p style="color:var(--muted);font-size:13px;">Lies deine Karte vor wenn du dran bist.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: 2 WAHRHEITEN 1 LÜGE – EINGABE ══════════════════════════ -->
+<div id="screen-participant-twotruths-input" class="screen">
+  <div class="page">
+    <div class="logo mb-20" style="font-size:20px;">Coach<span>Board</span></div>
+    <div class="card card-glow">
+      <span class="badge mb-12" style="background:rgba(123,110,246,.2);color:var(--accent2);">🎭 2 Wahrheiten, 1 Lüge</span>
+      <h2 style="margin-bottom:8px;font-size:20px;">Deine 3 Aussagen</h2>
+      <p class="mb-20" style="font-size:13px;">Schreib 2 wahre und 1 falsche Aussage über dich.<br>Die Gruppe soll die Lüge finden!</p>
+
+      <label class="field-label">AUSSAGE 1</label>
+      <input id="tt-input-1" type="text" placeholder="Wahrheit oder Lüge…" maxlength="100" />
+      <label class="field-label">AUSSAGE 2</label>
+      <input id="tt-input-2" type="text" placeholder="Wahrheit oder Lüge…" maxlength="100" />
+      <label class="field-label">AUSSAGE 3</label>
+      <input id="tt-input-3" type="text" placeholder="Wahrheit oder Lüge…" maxlength="100" />
+
+      <label class="field-label" style="margin-top:8px;">WELCHE IST DIE LÜGE?</label>
+      <div class="lie-selector" id="lie-selector">
+        <button class="lie-btn" data-lie="0">Aussage 1</button>
+        <button class="lie-btn" data-lie="1">Aussage 2</button>
+        <button class="lie-btn" data-lie="2">Aussage 3</button>
+      </div>
+
+      <button id="btn-tt-submit" class="btn btn-primary btn-lg btn-full" style="margin-top:16px;" disabled>
+        Abschicken ✓
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: 2 WAHRHEITEN 1 LÜGE – WARTEN ═══════════════════════════ -->
+<div id="screen-participant-twotruths-wait" class="screen">
+  <div class="page" style="display:flex;flex-direction:column;justify-content:center;min-height:100vh;">
+    <div class="card card-glow center">
+      <span class="emoji-big">✨</span>
+      <h2>Aussagen eingereicht!</h2>
+      <p class="mt-8">Warte auf die Abstimmung…</p>
+      <div class="waiting-icon mt-24"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: 2 WAHRHEITEN 1 LÜGE – ABSTIMMEN ════════════════════════ -->
+<div id="screen-participant-twotruths-vote" class="screen">
+  <div class="page">
+    <div class="logo mb-16" style="font-size:20px;">Coach<span>Board</span></div>
+    <div class="card card-glow">
+      <span class="badge mb-12" style="background:rgba(123,110,246,.2);color:var(--accent2);">🎭 Welche ist die Lüge?</span>
+      <h2 id="p-tt-person-name" style="margin-bottom:16px;font-size:20px;"></h2>
+      <div id="p-tt-vote-options"></div>
+      <div id="p-tt-vote-sent" style="display:none;text-align:center;padding:16px 0;">
+        <div style="font-size:32px;margin-bottom:8px;">✓</div>
+        <div style="font-weight:600;color:var(--success);">Stimme abgegeben!</div>
+        <div style="color:var(--muted);font-size:13px;margin-top:4px;">Warte auf Auflösung…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: BINGO EDITOR ══════════════════════════════════════════════════ -->
+<div id="screen-mod-bingo-editor" class="screen has-topbar">
+  <div class="page">
+    <div class="flex-between mb-16">
+      <h2 style="margin:0;">🎯 Team-Bingo</h2>
+      <button id="btn-bingo-start" class="btn btn-primary" disabled>Bingo starten →</button>
+    </div>
+    <p class="muted mb-20">Erstelle Aussagen für die Bingo-Felder. Jeder bekommt ein zufällig gemischtes Feld auf sein Handy.</p>
+
+    <div class="card" style="margin-bottom:16px;padding:14px 18px;">
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <div>
+          <label class="field-label">FELDGRÖSSE</label>
+          <div style="display:flex;gap:8px;">
+            <button class="bingo-size-btn active" data-size="3">3×3</button>
+            <button class="bingo-size-btn" data-size="4">4×4</button>
+            <button class="bingo-size-btn" data-size="5">5×5</button>
+          </div>
+        </div>
+        <div style="color:var(--muted);font-size:13px;margin-top:16px;">
+          Mindestens <span id="bingo-min-count">9</span> Aussagen nötig
+          · aktuell <span id="bingo-current-count">0</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="bingo-statements-list" style="margin-bottom:16px;"></div>
+
+    <div class="card" style="border-style:dashed;">
+      <h3 style="margin-bottom:12px;">＋ Neue Aussage</h3>
+      <textarea id="bingo-statement-input" rows="2"
+        placeholder="z.B. »Hat mehr als 2 Haustiere« oder »Kann ein Instrument spielen«"
+        maxlength="80"></textarea>
+      <div style="display:flex;gap:8px;margin-top:4px;">
+        <button id="btn-add-bingo-statement" class="btn btn-secondary">Hinzufügen</button>
+        <button id="btn-load-bingo-defaults" class="btn btn-ghost" style="font-size:12px;">📚 Beispiele laden</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: BINGO LIVE ══════════════════════════════════════════════════════ -->
+<div id="screen-mod-bingo-live" class="screen has-topbar">
+  <div class="page">
+    <div class="flex-between mb-16">
+      <div>
+        <h2 style="margin:0;">🎯 Bingo läuft!</h2>
+        <p class="muted mt-4" style="font-size:13px;">Teilnehmer gehen durch den Raum und fragen sich gegenseitig.</p>
+      </div>
+      <button id="btn-bingo-end" class="btn btn-danger">Beenden</button>
+    </div>
+
+    <!-- Live Fortschritt -->
+    <div class="card card-glow" style="margin-bottom:16px;">
+      <div class="flex-between mb-12">
+        <div style="font-weight:600;">Fortschritt</div>
+        <span class="badge badge-success"><span id="bingo-bingo-count">0</span> × Bingo! 🎉</span>
+      </div>
+      <div id="bingo-progress-list"></div>
+    </div>
+
+    <!-- Bingo-Rufe -->
+    <div id="bingo-shouts" style="margin-bottom:16px;"></div>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: BINGO FELD ══════════════════════════════════════════════ -->
+<div id="screen-participant-bingo" class="screen">
+  <div class="page" style="padding-bottom:80px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div class="logo" style="font-size:18px;">Coach<span>Board</span></div>
+      <div>
+        <div id="p-bingo-status" class="live-dot">Geh durch den Raum!</div>
+        <button id="btn-p-bingo" class="btn btn-primary" style="margin-top:6px;display:none;width:100%;justify-content:center;">
+          🎉 BINGO rufen!
+        </button>
+      </div>
+    </div>
+    <div id="p-bingo-grid" class="bingo-grid"></div>
+    <div style="color:var(--muted);font-size:12px;text-align:center;margin-top:12px;">
+      Tippe ein Feld an wenn du jemanden gefunden hast!
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: BINGO GEWONNEN ══════════════════════════════════════════ -->
+<div id="screen-participant-bingo-won" class="screen">
+  <div class="page" style="display:flex;flex-direction:column;justify-content:center;min-height:100vh;text-align:center;">
+    <div class="card card-glow center">
+      <div style="font-size:64px;margin-bottom:16px;animation:pop .5s ease;">🎉</div>
+      <h2 style="font-family:var(--font-d);font-size:32px;margin-bottom:8px;">BINGO!</h2>
+      <p style="margin-bottom:16px;">Du hast eine Reihe vervollständigt!</p>
+      <div id="p-bingo-won-row" style="margin-bottom:16px;"></div>
+      <div class="live-dot" style="justify-content:center;">Warte auf Moderatorin…</div>
     </div>
   </div>
 </div>
