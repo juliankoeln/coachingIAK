@@ -2531,7 +2531,6 @@ async function showWhoKnows() {
 }
 
 function showWhoKnowsCollect() {
-  // Reuse bingo collect screen with different heading
   showScreen('screen-mod-bingo-collect');
   document.querySelector('#screen-mod-bingo-collect h2') &&
     (document.querySelector('#screen-mod-bingo-collect h2').textContent = '🔍 Kennt ihr eure Kollegen?');
@@ -2553,6 +2552,9 @@ function showWhoKnowsCollect() {
     await buildWhoKnowsFromSubmissions(snap.val() || {});
   };
   document.getElementById('btn-bingo-skip-collect').style.display = 'none';
+
+  // Demo helper
+  if (typeof showDemoHelper === 'function') showDemoHelper('whoknows_collect');
 }
 
 async function buildWhoKnowsFromSubmissions(subs) {
@@ -2903,12 +2905,22 @@ async function demoFillSubmissions() {
     ['Ich meditiere jeden Morgen', 'Ich spreche 4 Sprachen'],
     ['Ich habe mal auf einer Theaterbühne gestanden', 'Ich koche jeden Sonntag für Familie'],
   ];
-  for (let i = 0; i < demoParticipantRefs.length; i++) {
-    const { id } = demoParticipantRefs[i];
-    await sessionRef.child('bingoSubmissions/' + id).set({ statements: submissionSets[i] });
-    await new Promise(r => setTimeout(r, 300));
+
+  // Use demoParticipantRefs if available, otherwise load from Firebase
+  let participants = demoParticipantRefs;
+  if (!participants || participants.length === 0) {
+    const snap = await sessionRef.child('participants').once('value');
+    const parts = snap.val() || {};
+    participants = Object.entries(parts).map(([id, p]) => ({ id, name: p.name }));
   }
-  toast('🧪 Demo: Einreichungen automatisch ausgefüllt', 'success');
+
+  for (let i = 0; i < participants.length; i++) {
+    const { id } = participants[i];
+    const statements = submissionSets[i % submissionSets.length];
+    await sessionRef.child('bingoSubmissions/' + id).set({ statements });
+    await new Promise(r => setTimeout(r, 250));
+  }
+  toast(`🧪 Demo: ${participants.length} Einreichungen automatisch ausgefüllt`, 'success');
 }
 
 // Demo: auto-vote (random)
