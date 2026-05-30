@@ -30,7 +30,55 @@ let pollQuestions   = [];   // [{text, type, options:[]}]
 let pollCurrentIdx  = 0;
 let pollLiveListener = null;
 
-// ─── MOD TOPBAR – see showModTopbar() defined below ──────────────────────
+// ─── MOD TOPBAR ────────────────────────────────────────────────────────────
+function showModTopbar() {
+  document.getElementById('mod-topbar').style.display = 'flex';
+  document.getElementById('btn-topbar-welcome').onclick = goToWelcome;
+
+  const menuBtn  = document.getElementById('btn-topbar-menu');
+  const dropdown = document.getElementById('topbar-dropdown');
+  if (!menuBtn || !dropdown) return;
+
+  // Toggle on click
+  menuBtn.onclick = (e) => {
+    e.stopPropagation();
+    dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+  };
+  // Close on outside click
+  document.addEventListener('click', () => { dropdown.style.display = 'none'; });
+
+  // Wire all menu items
+  dropdown.querySelectorAll('.dropdown-item').forEach(item => {
+    item.onclick = (e) => {
+      e.stopPropagation();
+      dropdown.style.display = 'none';
+      const a = item.dataset.action;
+      if      (a === 'nobody')       startIcebreakerFromMenu('nobody');
+      else if (a === 'twotruths')    startIcebreakerFromMenu('twotruths');
+      else if (a === 'cards')        showCardsEditor();
+      else if (a === 'bingo')        showBingoEditor();
+      else if (a === 'whoknows')     showWhoKnows();
+      else if (a === 'poll')         showPollEditor();
+      else if (a === 'team')         showTeamEditor();
+      else if (a === 'welcome-edit') goToWelcomeEditor();
+      else if (a === 'lobby')        showModeratorLobby();
+      else if (a === 'preset')       showPresetManager();
+    };
+  });
+}
+
+function startIcebreakerFromMenu(game) {
+  sessionRef.update({answers:null,votes:null}).then(() => {
+    if (game === 'nobody') {
+      sessionRef.child('phase').set('input');
+      showScreen('screen-mod-waiting');
+      if (typeof showDemoHelper === 'function') showDemoHelper('input');
+      watchAnswers();
+    } else if (game === 'twotruths') {
+      startTwoTruths();
+    }
+  });
+}
 function goToWelcome() {
   // Just push phase to Firebase - all participant phones flip to welcome screen
   // Mod stays on current screen (no editor forced open)
@@ -1730,7 +1778,7 @@ function startTwoTruths() {
   sessionRef.update({ ttStatements: null, ttVotes: null });
   sessionRef.child('phase').set('twotruths_input');
   showScreen('screen-mod-twotruths-waiting');
-  showDemoHelper('twotruths_input');
+  if (typeof showDemoHelper === 'function') showDemoHelper('twotruths_input');
   watchTwoTruthsInput();
 }
 
@@ -2311,7 +2359,7 @@ showBingoEditor = function() {
 async function startBingoCollection() {
   await sessionRef.child('bingoSubmissions').remove();
   sessionRef.child('phase').set('bingo_collect');
-  showDemoHelper('bingo_collect');
+  if (typeof showDemoHelper === 'function') showDemoHelper('bingo_collect');
   showBingoCollectScreen();
 }
 
