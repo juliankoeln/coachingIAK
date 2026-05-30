@@ -2857,7 +2857,7 @@ async function startDemoMode() {
   }
 
   showModTopbar();
-  showModeratorLobby();
+  showModeratorWelcomeEdit();  // go through welcome editor so beamer link is visible
   toast('🧪 Demo-Modus · 5 Fake-Teilnehmer verbunden', 'success');
 }
 
