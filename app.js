@@ -37,6 +37,7 @@ function showModTopbar() {
   document.getElementById('btn-topbar-welcome-edit').onclick = goToWelcomeEditor;
   document.getElementById('btn-topbar-poll').onclick    = () => showPollEditor();
   document.getElementById('btn-topbar-preset').onclick  = () => showPresetManager();
+  document.getElementById('btn-topbar-bingo').onclick   = () => showBingoEditor();
   document.getElementById('btn-topbar-team').onclick    = () => showTeamEditor();
 }
 function goToWelcome() {
