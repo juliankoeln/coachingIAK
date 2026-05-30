@@ -18,12 +18,33 @@
 <div id="mod-topbar" class="mod-topbar" style="display:none;">
   <div class="logo" style="font-size:18px;">Coach<span>Board</span></div>
   <div style="display:flex;align-items:center;gap:8px;">
-    <button id="btn-topbar-bingo" class="btn btn-ghost" style="font-size:12px;padding:6px 12px;">🎯 Bingo</button>
-    <button id="btn-topbar-team" class="btn btn-ghost" style="font-size:12px;padding:6px 12px;">🏆 Teamspiel</button>
-    <button id="btn-topbar-preset" class="btn btn-ghost" style="font-size:12px;padding:6px 12px;">💾 Vorbereitung</button>
-    <button id="btn-topbar-poll" class="btn btn-ghost" style="font-size:12px;padding:6px 12px;">📊 Umfrage</button>
-    <button id="btn-topbar-welcome-edit" class="btn btn-ghost" style="font-size:12px;padding:6px 12px;">✏️ Willkommen</button>
-    <button id="btn-topbar-welcome" class="btn btn-primary" style="font-size:12px;padding:6px 14px;">🏠 Auf Handys zeigen</button>
+    <button id="btn-topbar-welcome" class="btn btn-primary" style="font-size:12px;padding:6px 14px;">🏠 Auf Handys</button>
+    <div class="menu-wrapper">
+      <button id="btn-topbar-menu" class="btn btn-secondary" style="font-size:12px;padding:6px 14px;">☰ Menü</button>
+      <div id="topbar-dropdown" class="topbar-dropdown" style="display:none;">
+
+        <div class="dropdown-section-label">🧊 ICEBREAKER</div>
+        <button class="dropdown-item" data-action="nobody">🕵️ Nobody is Perfect</button>
+        <button class="dropdown-item" data-action="twotruths">🎭 2 Wahrheiten, 1 Lüge</button>
+        <button class="dropdown-item" data-action="cards">🃏 Persönlichkeitskarten</button>
+        <button class="dropdown-item" data-action="bingo">🎯 Team-Bingo</button>
+        <button class="dropdown-item" data-action="whoknows">🔍 Kennt ihr eure Kollegen?</button>
+
+        <div class="dropdown-divider"></div>
+        <div class="dropdown-section-label">📊 UMFRAGE & FEEDBACK</div>
+        <button class="dropdown-item" data-action="poll">📊 Live-Abstimmung</button>
+
+        <div class="dropdown-divider"></div>
+        <div class="dropdown-section-label">🏆 TEAMSPIEL</div>
+        <button class="dropdown-item" data-action="team">🏆 Teamchallenge</button>
+
+        <div class="dropdown-divider"></div>
+        <div class="dropdown-section-label">⚙️ SESSION</div>
+        <button class="dropdown-item" data-action="welcome-edit">✏️ Willkommen bearbeiten</button>
+        <button class="dropdown-item" data-action="lobby">📱 QR-Code / Lobby</button>
+        <button class="dropdown-item" data-action="preset">💾 Vorbereitung</button>
+      </div>
+    </div>
     <span class="live-dot">Live</span>
   </div>
 </div>
@@ -51,6 +72,9 @@
     <h1 style="margin-bottom:16px;">Eine Gruppe.<br>Echte Momente.</h1>
     <p style="margin-bottom:40px;max-width:380px;">Erstelle eine Session, zeig den QR-Code – und los geht's. Teilnehmer brauchen nur ihr Handy.</p>
     <button id="btn-create-session" class="btn btn-primary btn-lg btn-full">✦ &nbsp;Neue Session starten</button>
+    <button id="btn-demo-mode" class="btn btn-ghost btn-full" style="margin-top:10px;justify-content:center;">
+      🧪 Demo-Modus (Testen ohne echte Teilnehmer)
+    </button>
     <div style="position:fixed;top:-120px;right:-120px;width:400px;height:400px;border-radius:50%;background:radial-gradient(circle,rgba(123,110,246,.12) 0%,transparent 70%);pointer-events:none;"></div>
     <div style="position:fixed;bottom:-80px;left:-80px;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(232,197,71,.07) 0%,transparent 70%);pointer-events:none;"></div>
   </div>
@@ -871,6 +895,192 @@
       <p style="margin-bottom:16px;">Du hast eine Reihe vervollständigt!</p>
       <div id="p-bingo-won-row" style="margin-bottom:16px;"></div>
       <div class="live-dot" style="justify-content:center;">Warte auf Moderatorin…</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: BINGO EINREICHUNGEN ═══════════════════════════════════════════ -->
+<div id="screen-mod-bingo-collect" class="screen has-topbar">
+  <div class="page">
+    <div class="flex-between mb-16">
+      <h2 style="margin:0;">🎯 Bingo – Einreichungen</h2>
+      <span class="live-dot">Live</span>
+    </div>
+    <p class="muted mb-16">Teilnehmer schreiben gerade ihre Aussagen. Wähle danach aus was ins Spiel kommt.</p>
+
+    <div class="card" style="margin-bottom:16px;padding:14px 18px;">
+      <div class="flex-between">
+        <div style="font-weight:600;">Eingegangen</div>
+        <span class="badge badge-success"><span id="bingo-submission-count">0</span> Aussagen</span>
+      </div>
+      <div id="bingo-submission-progress" style="margin-top:10px;color:var(--muted);font-size:13px;">
+        Warte auf Teilnehmer…
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+      <button id="btn-bingo-to-selection" class="btn btn-primary" disabled>
+        Aussagen auswählen →
+      </button>
+      <button id="btn-bingo-skip-collect" class="btn btn-ghost">
+        Überspringen (eigene Aussagen)
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: BINGO AUSWAHL ══════════════════════════════════════════════════ -->
+<div id="screen-mod-bingo-select" class="screen has-topbar">
+  <div class="page">
+    <div class="flex-between mb-8">
+      <h2 style="margin:0;">Aussagen auswählen</h2>
+      <button id="btn-bingo-confirm-selection" class="btn btn-primary" disabled>
+        Spiel starten →
+      </button>
+    </div>
+    <p class="muted mb-4" style="font-size:13px;">
+      Tippe auf Aussagen um sie zu markieren. Mindestens <span id="bingo-select-min">9</span> nötig für ein <span id="bingo-select-size">3×3</span>-Feld.
+      <span id="bingo-selected-count" style="color:var(--accent);font-weight:600;">0 ausgewählt</span>
+    </p>
+
+    <!-- Tabs: Eingereicht / Eigene -->
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <button class="bingo-tab-btn active" data-tab="submitted">👥 Von Teilnehmern (<span id="tab-submitted-count">0</span>)</button>
+      <button class="bingo-tab-btn" data-tab="defaults">📚 Eigene (<span id="tab-defaults-count">0</span>)</button>
+    </div>
+
+    <div id="bingo-select-submitted" class="bingo-select-panel"></div>
+    <div id="bingo-select-defaults" class="bingo-select-panel" style="display:none;"></div>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: BINGO EINREICHUNG ═══════════════════════════════════════ -->
+<div id="screen-participant-bingo-submit" class="screen">
+  <div class="page">
+    <div class="logo mb-20" style="font-size:20px;text-align:center;">Coach<span>Board</span></div>
+    <div class="card card-glow">
+      <div style="font-size:36px;text-align:center;margin-bottom:12px;">🎯</div>
+      <h2 style="margin-bottom:8px;text-align:center;">Deine Bingo-Aussagen</h2>
+      <p class="mb-20" style="font-size:13px;text-align:center;">
+        Schreib 1–3 Dinge über dich die andere <em>nicht</em> wissen.<br>
+        Sie landen vielleicht auf dem Bingo-Feld!
+      </p>
+
+      <label class="field-label">AUSSAGE 1</label>
+      <input id="bingo-sub-1" type="text" placeholder="z.B. Ich habe mal in Japan gearbeitet" maxlength="80" />
+      <label class="field-label">AUSSAGE 2 (optional)</label>
+      <input id="bingo-sub-2" type="text" placeholder="z.B. Ich kann Gebärdensprache" maxlength="80" />
+      <label class="field-label">AUSSAGE 3 (optional)</label>
+      <input id="bingo-sub-3" type="text" placeholder="z.B. Ich besitze ein Einhorn-Kostüm" maxlength="80" />
+
+      <button id="btn-bingo-submit-statements" class="btn btn-primary btn-lg btn-full" style="margin-top:8px;" disabled>
+        Abschicken ✓
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: BINGO EINREICHUNG GESENDET ══════════════════════════════ -->
+<div id="screen-participant-bingo-submitted" class="screen">
+  <div class="page" style="display:flex;flex-direction:column;justify-content:center;min-height:100vh;">
+    <div class="card card-glow center">
+      <span class="emoji-big">✨</span>
+      <h2>Super!</h2>
+      <p class="mt-8">Deine Aussagen sind eingegangen.<br>Die Moderatorin wählt gleich aus was ins Spiel kommt.</p>
+      <div class="waiting-icon mt-24"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: KENNT IHR EURE KOLLEGEN – LIVE ════════════════════════════════ -->
+<div id="screen-mod-whoknows-live" class="screen has-topbar">
+  <div class="page">
+    <div class="flex-between mb-16">
+      <div>
+        <div style="color:var(--muted);font-size:12px;font-weight:600;letter-spacing:1px;">
+          FRAGE <span id="wk-q-num">1</span> VON <span id="wk-q-total">?</span>
+        </div>
+        <h2 id="wk-statement" style="margin:4px 0 0;font-size:19px;line-height:1.3;"></h2>
+      </div>
+      <button id="btn-wk-reveal" class="btn btn-primary">Auflösung →</button>
+    </div>
+
+    <div class="card card-glow" style="margin-bottom:14px;">
+      <div class="flex-between mb-10">
+        <div style="font-weight:600;">Wer hat das geschrieben?</div>
+        <span class="badge badge-success"><span id="wk-vote-count">0</span> Stimmen</span>
+      </div>
+      <div id="wk-live-bars"></div>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button id="btn-wk-prev" class="btn btn-ghost">← Zurück</button>
+      <button id="btn-wk-next" class="btn btn-secondary" style="flex:1;">Nächste Aussage →</button>
+      <button id="btn-wk-end" class="btn btn-danger">Beenden</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: KENNT IHR – AUFLÖSUNG ═════════════════════════════════════════ -->
+<div id="screen-mod-whoknows-reveal" class="screen has-topbar">
+  <div class="page">
+    <div class="flex-between mb-20">
+      <h2 style="margin:0;">Auflösung</h2>
+      <div style="display:flex;gap:8px;">
+        <button id="btn-wk-reveal-next" class="btn btn-primary">Nächste →</button>
+        <button id="btn-wk-reveal-end" class="btn btn-ghost">Beenden</button>
+      </div>
+    </div>
+    <div id="wk-reveal-content"></div>
+  </div>
+</div>
+
+
+<!-- ════ MOD: KENNT IHR – ENDERGEBNIS ══════════════════════════════════════ -->
+<div id="screen-mod-whoknows-results" class="screen has-topbar">
+  <div class="page">
+    <h2 style="margin-bottom:20px;">🏆 Endergebnis</h2>
+    <div id="wk-final-scores"></div>
+    <button id="btn-wk-new" class="btn btn-ghost" style="margin-top:16px;">↺ Nochmal</button>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: KENNT IHR – ABSTIMMEN ══════════════════════════════════ -->
+<div id="screen-participant-whoknows" class="screen">
+  <div class="page">
+    <div class="logo mb-16" style="font-size:20px;text-align:center;">Coach<span>Board</span></div>
+    <div class="card card-glow">
+      <span class="badge mb-12" style="background:rgba(123,110,246,.2);color:var(--accent2);">🔍 Kennt ihr eure Kollegen?</span>
+      <div style="font-size:11px;color:var(--muted);font-weight:600;letter-spacing:1px;margin-bottom:8px;">
+        AUSSAGE <span id="p-wk-num">1</span>
+      </div>
+      <div id="p-wk-statement" style="font-family:var(--font-d);font-size:20px;line-height:1.4;margin-bottom:20px;font-style:italic;"></div>
+      <div id="p-wk-options"></div>
+      <div id="p-wk-sent" style="display:none;text-align:center;padding:12px 0;">
+        <div style="font-size:28px;margin-bottom:6px;">✓</div>
+        <div style="font-weight:600;color:var(--success);">Stimme abgegeben!</div>
+        <div style="color:var(--muted);font-size:13px;margin-top:4px;">Warte auf Auflösung…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════ TEILNEHMER: KENNT IHR – ERGEBNIS ═══════════════════════════════════ -->
+<div id="screen-participant-whoknows-result" class="screen">
+  <div class="page" style="display:flex;flex-direction:column;justify-content:center;min-height:100vh;">
+    <div class="card card-glow center">
+      <div id="p-wk-result-emoji" style="font-size:48px;margin-bottom:12px;">🎯</div>
+      <h2 id="p-wk-result-title" style="margin-bottom:8px;"></h2>
+      <p id="p-wk-result-text" style="color:var(--muted);font-size:14px;"></p>
+      <div class="waiting-icon mt-20"></div>
     </div>
   </div>
 </div>

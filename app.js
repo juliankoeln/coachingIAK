@@ -92,7 +92,10 @@ function watchDisplayPhase() {
     else if (p === 'cards_active')      showDisplayCards(s);
     else if (p === 'twotruths_input')   showDisplayTwoTruthsInput(s);
     else if (p === 'twotruths_vote')    showDisplayTwoTruthsVote(s);
-    else if (p === 'bingo_active')       showDisplayBingo(s);
+    else if (p === 'bingo_collect')        showDisplayBingoCollect(s);
+    else if (p === 'whoknows_collect')     showDisplayBingoCollect(s);
+    else if (p === 'whoknows_active')      showDisplayWhoKnows(s);
+    else if (p === 'bingo_active')        showDisplayBingo(s);
   });
 }
 
@@ -811,6 +814,10 @@ function watchSessionPhase() {
     else if (phase==='cards_active')      showParticipantCard(session);
     else if (phase==='twotruths_input')   showParticipantTwoTruthsInput();
     else if (phase==='twotruths_vote')    showParticipantTwoTruthsVote(session);
+    else if (phase==='bingo_collect')      showParticipantBingoSubmit();
+    else if (phase==='whoknows_collect')   showParticipantBingoSubmit();
+    else if (phase==='whoknows_active')    watchParticipantWhoKnows();
+    else if (phase==='whoknows_done')      showScreen('screen-participant-idle');
     else if (phase==='bingo_active')      showParticipantBingo(session);
   });
 }
@@ -1732,6 +1739,7 @@ function startTwoTruths() {
   sessionRef.update({ ttStatements: null, ttVotes: null });
   sessionRef.child('phase').set('twotruths_input');
   showScreen('screen-mod-twotruths-waiting');
+  showDemoHelper('twotruths_input');
   watchTwoTruthsInput();
 }
 
@@ -2171,6 +2179,18 @@ function renderBingoProgress(bingo) {
 }
 
 // ─── Display: Bingo ────────────────────────────────────────────
+function showDisplayBingoCollect(s) {
+  const subs  = s.bingoSubmissions || {};
+  const count = Object.values(subs).flatMap(s => s.statements||[]).length;
+  const parts = Object.keys(s.participants||{}).length;
+  setDC(`<div class="display-centered">
+    <div class="display-big-emoji">🎯</div>
+    <div class="display-big-title">Bingo-Aussagen einreichen</div>
+    <div class="display-big-sub">Schreib 1–3 Dinge über dich die andere nicht wissen!</div>
+    <div class="display-progress-pill" style="margin-top:20px;">${count} Aussagen von ${Object.keys(subs).length} Personen</div>
+  </div>`);
+}
+
 function showDisplayBingo(s) {
   const bingo  = s.bingo || {};
   const bingos = bingo.bingos || {};
@@ -2262,4 +2282,642 @@ function checkBingoWin() {
   if ([...Array(s)].every((_, i) => c.includes(i * s + (s - 1 - i)))) return true;
 
   return false;
+}
+
+// ══════════════════════════════════════════════════════════════
+// BINGO: EINREICHUNGS-FLOW
+// ══════════════════════════════════════════════════════════════
+
+let bingoSelectedStatements = []; // statements chosen by mod for the game
+let bingoSubmissionListener = null;
+
+// ─── Override showBingoEditor to add collect option ────────────
+// Patch the start button to offer two modes
+const _origShowBingoEditor = showBingoEditor;
+showBingoEditor = function() {
+  _origShowBingoEditor();
+
+  // Replace start button with two options
+  const startBtn = document.getElementById('btn-bingo-start');
+  if (startBtn) {
+    // Wrap in container with two buttons
+    const wrapper = startBtn.parentNode;
+    const collectBtn = document.createElement('button');
+    collectBtn.className = 'btn btn-accent2 btn-full';
+    collectBtn.style.cssText = 'margin-bottom:8px;justify-content:center;background:var(--accent2);color:#fff;';
+    collectBtn.id = 'btn-bingo-collect';
+    collectBtn.innerHTML = '👥 Teilnehmer einladen Aussagen einzureichen';
+    wrapper.insertBefore(collectBtn, startBtn);
+
+    // Relabel start button
+    startBtn.textContent = '📚 Mit eigenen Aussagen starten →';
+
+    collectBtn.onclick = startBingoCollection;
+  }
+};
+
+// ─── Phase 1: Collect submissions ──────────────────────────────
+async function startBingoCollection() {
+  await sessionRef.child('bingoSubmissions').remove();
+  sessionRef.child('phase').set('bingo_collect');
+  showDemoHelper('bingo_collect');
+  showBingoCollectScreen();
+}
+
+function showBingoCollectScreen() {
+  showScreen('screen-mod-bingo-collect');
+
+  if (bingoSubmissionListener) sessionRef.child('bingoSubmissions').off('value', bingoSubmissionListener);
+  bingoSubmissionListener = sessionRef.child('bingoSubmissions').on('value', snap => {
+    const subs = snap.val() || {};
+    // Count total statements
+    const allStatements = Object.values(subs).flatMap(s => s.statements || []);
+    const count = allStatements.length;
+    const participantCount = Object.keys(subs).length;
+
+    document.getElementById('bingo-submission-count').textContent = count;
+    document.getElementById('bingo-submission-progress').textContent =
+      `${participantCount} Teilnehmer haben ${count} Aussagen eingereicht`;
+    document.getElementById('btn-bingo-to-selection').disabled = count < 1;
+  });
+
+  document.getElementById('btn-bingo-to-selection').onclick = () => showBingoSelectionScreen();
+  document.getElementById('btn-bingo-skip-collect').onclick = () => {
+    // Go straight to editor with default statements
+    if (bingoSubmissionListener) sessionRef.child('bingoSubmissions').off('value', bingoSubmissionListener);
+    sessionRef.child('phase').set('welcome');
+    showBingoEditor();
+  };
+}
+
+// ─── Phase 2: Mod selects statements ───────────────────────────
+async function showBingoSelectionScreen() {
+  if (bingoSubmissionListener) sessionRef.child('bingoSubmissions').off('value', bingoSubmissionListener);
+  showScreen('screen-mod-bingo-select');
+
+  bingoSelectedStatements = [];
+  const needed = bingoSize * bingoSize;
+  document.getElementById('bingo-select-min').textContent  = needed;
+  document.getElementById('bingo-select-size').textContent = `${bingoSize}×${bingoSize}`;
+
+  // Load submissions
+  const snap = await sessionRef.child('bingoSubmissions').once('value');
+  const subs = snap.val() || {};
+  const submitted = []; // [{text, authorName}]
+
+  const psSnap = await sessionRef.child('participants').once('value');
+  const parts  = psSnap.val() || {};
+  const nameMap = {};
+  Object.entries(parts).forEach(([id,p]) => nameMap[id] = p.name);
+
+  Object.entries(subs).forEach(([pid, data]) => {
+    (data.statements || []).forEach(text => {
+      if (text.trim()) submitted.push({ text: text.trim(), author: nameMap[pid] || '?' });
+    });
+  });
+
+  // Tab counts
+  document.getElementById('tab-submitted-count').textContent = submitted.length;
+  document.getElementById('tab-defaults-count').textContent  = bingoStatements.length;
+
+  // Tab switching
+  document.querySelectorAll('.bingo-tab-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.bingo-tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('bingo-select-submitted').style.display =
+        btn.dataset.tab === 'submitted' ? 'block' : 'none';
+      document.getElementById('bingo-select-defaults').style.display =
+        btn.dataset.tab === 'defaults' ? 'block' : 'none';
+    };
+  });
+
+  function updateSelectionCount() {
+    const cnt = bingoSelectedStatements.length;
+    document.getElementById('bingo-selected-count').textContent = `${cnt} ausgewählt`;
+    document.getElementById('btn-bingo-confirm-selection').disabled = cnt < needed;
+  }
+
+  function renderSelectPanel(containerId, items, isSubmitted) {
+    const panel = document.getElementById(containerId);
+    panel.innerHTML = '';
+    items.forEach((item, i) => {
+      const text   = isSubmitted ? item.text   : item;
+      const author = isSubmitted ? item.author : null;
+      const card = document.createElement('div');
+      card.className = 'bingo-select-item';
+      card.dataset.text = text;
+      card.innerHTML = `
+        <div style="flex:1;">
+          <div style="font-size:14px;">${text}</div>
+          ${author ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;">von ${author}</div>` : ''}
+        </div>
+        <span class="bingo-select-check">✓</span>`;
+      card.onclick = () => {
+        const idx = bingoSelectedStatements.indexOf(text);
+        if (idx > -1) {
+          bingoSelectedStatements.splice(idx, 1);
+          card.classList.remove('selected');
+        } else {
+          bingoSelectedStatements.push(text);
+          card.classList.add('selected');
+        }
+        updateSelectionCount();
+      };
+      panel.appendChild(card);
+    });
+  }
+
+  renderSelectPanel('bingo-select-submitted', submitted, true);
+  renderSelectPanel('bingo-select-defaults', bingoStatements, false);
+  updateSelectionCount();
+
+  document.getElementById('btn-bingo-confirm-selection').onclick = async () => {
+    bingoStatements = [...bingoSelectedStatements];
+    await startBingo();
+  };
+}
+
+// ─── Participant: submit bingo statements ──────────────────────
+function showParticipantBingoSubmit() {
+  // Reset fields
+  ['bingo-sub-1','bingo-sub-2','bingo-sub-3'].forEach(id =>
+    document.getElementById(id).value = '');
+  document.getElementById('btn-bingo-submit-statements').disabled = true;
+
+  showScreen('screen-participant-bingo-submit');
+
+  document.getElementById('bingo-sub-1').oninput =
+  document.getElementById('bingo-sub-2').oninput =
+  document.getElementById('bingo-sub-3').oninput = () => {
+    const s1 = document.getElementById('bingo-sub-1').value.trim();
+    document.getElementById('btn-bingo-submit-statements').disabled = !s1;
+  };
+
+  document.getElementById('btn-bingo-submit-statements').onclick = () => {
+    const statements = [
+      document.getElementById('bingo-sub-1').value.trim(),
+      document.getElementById('bingo-sub-2').value.trim(),
+      document.getElementById('bingo-sub-3').value.trim(),
+    ].filter(s => s);
+
+    sessionRef.child('bingoSubmissions/' + myId).set({ statements });
+    showScreen('screen-participant-bingo-submitted');
+  };
+}
+
+// ══════════════════════════════════════════════════════════════
+// KENNT IHR EURE KOLLEGEN?
+// ══════════════════════════════════════════════════════════════
+
+let wkStatements    = []; // [{text, authorId, authorName}]
+let wkCurrentIdx    = 0;
+let wkScores        = {}; // participantId → correct count
+let wkVoteListener  = null;
+
+async function showWhoKnows() {
+  // Reuse bingo submissions if available, otherwise collect fresh
+  const snap = await sessionRef.child('bingoSubmissions').once('value');
+  const subs = snap.val();
+
+  if (subs && Object.keys(subs).length > 1) {
+    // Use existing submissions
+    await buildWhoKnowsFromSubmissions(subs);
+  } else {
+    // Collect fresh submissions
+    await sessionRef.child('bingoSubmissions').remove();
+    sessionRef.child('phase').set('whoknows_collect');
+    showWhoKnowsCollect();
+  }
+}
+
+function showWhoKnowsCollect() {
+  // Reuse bingo collect screen with different heading
+  showScreen('screen-mod-bingo-collect');
+  document.querySelector('#screen-mod-bingo-collect h2') &&
+    (document.querySelector('#screen-mod-bingo-collect h2').textContent = '🔍 Kennt ihr eure Kollegen?');
+
+  if (bingoSubmissionListener) sessionRef.child('bingoSubmissions').off('value', bingoSubmissionListener);
+  bingoSubmissionListener = sessionRef.child('bingoSubmissions').on('value', snap => {
+    const subs = snap.val() || {};
+    const count = Object.values(subs).flatMap(s => s.statements||[]).length;
+    document.getElementById('bingo-submission-count').textContent = count;
+    document.getElementById('bingo-submission-progress').textContent =
+      `${Object.keys(subs).length} Teilnehmer · ${count} Aussagen`;
+    document.getElementById('btn-bingo-to-selection').disabled = Object.keys(subs).length < 2;
+  });
+
+  document.getElementById('btn-bingo-to-selection').textContent = 'Spiel starten →';
+  document.getElementById('btn-bingo-to-selection').onclick = async () => {
+    if (bingoSubmissionListener) sessionRef.child('bingoSubmissions').off('value', bingoSubmissionListener);
+    const snap = await sessionRef.child('bingoSubmissions').once('value');
+    await buildWhoKnowsFromSubmissions(snap.val() || {});
+  };
+  document.getElementById('btn-bingo-skip-collect').style.display = 'none';
+}
+
+async function buildWhoKnowsFromSubmissions(subs) {
+  const psSnap = await sessionRef.child('participants').once('value');
+  const parts  = psSnap.val() || {};
+  const nameMap = {};
+  Object.entries(parts).forEach(([id,p]) => nameMap[id] = p.name);
+
+  wkStatements = [];
+  Object.entries(subs).forEach(([pid, data]) => {
+    (data.statements||[]).forEach(text => {
+      if (text.trim()) wkStatements.push({
+        text: text.trim(), authorId: pid, authorName: nameMap[pid]||'?'
+      });
+    });
+  });
+  // Shuffle
+  wkStatements.sort(() => Math.random() - .5);
+
+  wkCurrentIdx = 0;
+  wkScores = {};
+  Object.keys(parts).forEach(id => wkScores[id] = 0);
+
+  await sessionRef.child('whoknows').set({
+    statements: wkStatements,
+    currentIdx: 0,
+    phase: 'vote'
+  });
+  sessionRef.child('phase').set('whoknows_active');
+  showWhoKnowsLive();
+}
+
+function showWhoKnowsLive() {
+  showScreen('screen-mod-whoknows-live');
+  const stmt = wkStatements[wkCurrentIdx];
+  document.getElementById('wk-q-num').textContent   = wkCurrentIdx + 1;
+  document.getElementById('wk-q-total').textContent = wkStatements.length;
+  document.getElementById('wk-statement').textContent = `"${stmt.text}"`;
+
+  sessionRef.child('whoknows').update({ currentIdx: wkCurrentIdx, phase: 'vote' });
+
+  // Live votes
+  if (wkVoteListener) sessionRef.child('whoknows/votes/' + wkCurrentIdx).off('value', wkVoteListener);
+  wkVoteListener = sessionRef.child('whoknows/votes/' + wkCurrentIdx).on('value', async snap => {
+    const votes    = snap.val() || {};
+    const voteCount = Object.keys(votes).length;
+    document.getElementById('wk-vote-count').textContent = voteCount;
+
+    // Count per candidate
+    const psSnap = await sessionRef.child('participants').once('value');
+    const parts  = psSnap.val() || {};
+    const nameMap = {};
+    Object.entries(parts).forEach(([id,p]) => nameMap[id] = p.name);
+
+    const counts = {};
+    Object.values(parts).forEach(p => counts[p.id||Object.keys(parts).find(k=>parts[k]===p)] = 0);
+    Object.entries(parts).forEach(([id]) => counts[id] = 0);
+    Object.values(votes).forEach(v => { if(counts[v]!==undefined) counts[v]++; });
+
+    const maxVal = Math.max(...Object.values(counts), 1);
+    const barsEl = document.getElementById('wk-live-bars');
+    barsEl.innerHTML = '';
+    Object.entries(counts).sort((a,b)=>b[1]-a[1]).forEach(([pid, cnt]) => {
+      const pct = Math.round((cnt/maxVal)*100);
+      const row = document.createElement('div');
+      row.className = 'live-bar-row';
+      row.innerHTML = `
+        <div class="live-bar-label" style="width:80px;text-align:right;font-size:12px;">${nameMap[pid]||'?'}</div>
+        <div class="live-bar-track"><div class="live-bar-fill" style="width:${pct}%;"></div></div>
+        <div class="live-bar-val">${cnt}</div>`;
+      barsEl.appendChild(row);
+    });
+  });
+
+  document.getElementById('btn-wk-reveal').onclick = showWhoKnowsReveal;
+  document.getElementById('btn-wk-prev').disabled = wkCurrentIdx === 0;
+  document.getElementById('btn-wk-prev').onclick = () => {
+    if (wkCurrentIdx > 0) { wkCurrentIdx--; showWhoKnowsLive(); }
+  };
+  document.getElementById('btn-wk-next').onclick = () => {
+    if (wkCurrentIdx < wkStatements.length - 1) { wkCurrentIdx++; showWhoKnowsLive(); }
+    else endWhoKnows();
+  };
+  document.getElementById('btn-wk-next').textContent =
+    wkCurrentIdx < wkStatements.length - 1 ? 'Nächste Aussage →' : 'Auswertung 🏆';
+  document.getElementById('btn-wk-end').onclick = endWhoKnows;
+}
+
+async function showWhoKnowsReveal() {
+  if (wkVoteListener) sessionRef.child('whoknows/votes/' + wkCurrentIdx).off('value', wkVoteListener);
+  showScreen('screen-mod-whoknows-reveal');
+
+  const stmt   = wkStatements[wkCurrentIdx];
+  const vSnap  = await sessionRef.child('whoknows/votes/' + wkCurrentIdx).once('value');
+  const psSnap = await sessionRef.child('participants').once('value');
+  const votes  = vSnap.val()  || {};
+  const parts  = psSnap.val() || {};
+  const nameMap = {};
+  Object.entries(parts).forEach(([id,p]) => nameMap[id] = p.name);
+
+  // Award points
+  Object.entries(votes).forEach(([voterId, guessedId]) => {
+    if (guessedId === stmt.authorId) {
+      wkScores[voterId] = (wkScores[voterId]||0) + 1;
+    }
+  });
+  sessionRef.child('whoknows/scores').set(wkScores);
+  sessionRef.child('whoknows/phase').set('reveal');
+
+  const correctGuessers = Object.entries(votes)
+    .filter(([,g]) => g === stmt.authorId)
+    .map(([vid]) => nameMap[vid]||'?');
+  const wrongGuessers = Object.entries(votes)
+    .filter(([,g]) => g !== stmt.authorId)
+    .map(([vid, gid]) => `${nameMap[vid]||'?'} → ${nameMap[gid]||'?'}`);
+
+  const content = document.getElementById('wk-reveal-content');
+  content.innerHTML = `
+    <div class="card card-glow" style="text-align:center;margin-bottom:16px;">
+      <div style="font-family:var(--font-d);font-size:22px;font-style:italic;margin-bottom:16px;">"${stmt.text}"</div>
+      <div style="font-size:14px;color:var(--muted);margin-bottom:4px;">Das war</div>
+      <div style="font-family:var(--font-d);font-size:32px;color:var(--accent);">${stmt.authorName}</div>
+    </div>
+    ${correctGuessers.length ? `<div class="result-guessers correct" style="margin-bottom:8px;">✓ Richtig: ${correctGuessers.join(', ')}</div>` : ''}
+    ${wrongGuessers.length   ? `<div class="result-guessers wrong">✗ Falsch: ${wrongGuessers.join(' · ')}</div>` : ''}
+  `;
+
+  const isLast = wkCurrentIdx >= wkStatements.length - 1;
+  document.getElementById('btn-wk-reveal-next').textContent = isLast ? 'Auswertung 🏆' : 'Nächste Aussage →';
+  document.getElementById('btn-wk-reveal-next').onclick = () => {
+    if (isLast) endWhoKnows();
+    else { wkCurrentIdx++; showWhoKnowsLive(); }
+  };
+  document.getElementById('btn-wk-reveal-end').onclick = endWhoKnows;
+}
+
+function endWhoKnows() {
+  sessionRef.child('phase').set('whoknows_done');
+  showWhoKnowsFinalScores();
+}
+
+function showWhoKnowsFinalScores() {
+  showScreen('screen-mod-whoknows-results');
+  const sorted = Object.entries(wkScores).sort((a,b)=>b[1]-a[1]);
+
+  // Get names async
+  sessionRef.child('participants').once('value', snap => {
+    const parts = snap.val() || {};
+    const nameMap = {};
+    Object.entries(parts).forEach(([id,p]) => nameMap[id] = p.name);
+
+    const container = document.getElementById('wk-final-scores');
+    container.innerHTML = '';
+    sorted.forEach(([pid, pts], i) => {
+      const card = document.createElement('div');
+      card.style.cssText = `display:flex;align-items:center;gap:14px;padding:14px 18px;
+        border-radius:var(--r);margin-bottom:10px;
+        background:${i===0?'rgba(232,197,71,.1)':'var(--surface)'};
+        border:1px solid ${i===0?'rgba(232,197,71,.4)':'var(--border)'};
+        animation:fadeUp .3s ease ${i*.08}s both;`;
+      card.innerHTML = `
+        <div style="width:32px;height:32px;border-radius:50%;
+          background:${i===0?'var(--accent)':'var(--surface2)'};
+          display:flex;align-items:center;justify-content:center;
+          font-weight:700;font-size:14px;color:${i===0?'#0f0e17':'var(--muted)'};">${i+1}</div>
+        <div style="flex:1;font-weight:${i===0?600:400};">${nameMap[pid]||'?'} ${i===0?'👑':''}</div>
+        <div style="font-weight:700;font-size:18px;color:${i===0?'var(--accent)':'var(--text)'};">${pts} ✓</div>`;
+      container.appendChild(card);
+    });
+  });
+  document.getElementById('btn-wk-new').onclick = () => showWhoKnows();
+}
+
+// ── Participant: Who Knows ──────────────────────────────────────
+let wkParticipantListener = null;
+
+function watchParticipantWhoKnows() {
+  if (wkParticipantListener) sessionRef.child('whoknows').off('value', wkParticipantListener);
+  wkParticipantListener = sessionRef.child('whoknows').on('value', async snap => {
+    const wk = snap.val();
+    if (!wk) return;
+
+    if (wk.phase === 'reveal') {
+      // Show result
+      const myVote   = ((wk.votes||{})[wk.currentIdx]||{})[myId];
+      const stmt     = (wk.statements||[])[wk.currentIdx];
+      const correct  = myVote === stmt?.authorId;
+      document.getElementById('p-wk-result-emoji').textContent = correct ? '🎯' : '😅';
+      document.getElementById('p-wk-result-title').textContent = correct ? 'Richtig!' : 'Nicht ganz…';
+      document.getElementById('p-wk-result-text').textContent  =
+        `Das war ${stmt?.authorName||'?'}`;
+      showScreen('screen-participant-whoknows-result');
+      return;
+    }
+
+    const idx  = wk.currentIdx || 0;
+    const stmt = (wk.statements||[])[idx];
+    if (!stmt) return;
+
+    // Don't vote on own statement
+    if (stmt.authorId === myId) {
+      showScreen('screen-participant-twotruths-wait'); // reuse wait screen
+      return;
+    }
+
+    // Already voted?
+    const myVote = ((wk.votes||{})[idx]||{})[myId];
+    if (myVote) {
+      showScreen('screen-participant-twotruths-wait');
+      return;
+    }
+
+    showScreen('screen-participant-whoknows');
+    document.getElementById('p-wk-num').textContent       = idx + 1;
+    document.getElementById('p-wk-statement').textContent = stmt.text;
+    document.getElementById('p-wk-sent').style.display    = 'none';
+
+    const optsEl = document.getElementById('p-wk-options');
+    optsEl.innerHTML = '';
+    optsEl.style.display = 'block';
+
+    // Load participants as options (exclude self and author)
+    const psSnap = await sessionRef.child('participants').once('value');
+    const parts  = psSnap.val() || {};
+    Object.entries(parts)
+      .filter(([id]) => id !== myId)
+      .forEach(([id, p]) => {
+        const btn = document.createElement('button');
+        btn.className = 'poll-choice-btn';
+        btn.textContent = p.name;
+        btn.onclick = () => {
+          sessionRef.child('whoknows/votes/' + idx + '/' + myId).set(id);
+          optsEl.style.display = 'none';
+          document.getElementById('p-wk-sent').style.display = 'block';
+        };
+        optsEl.appendChild(btn);
+      });
+  });
+}
+
+// ── Display: Who Knows ─────────────────────────────────────────
+function showDisplayWhoKnows(s) {
+  const wk   = s.whoknows || {};
+  const idx  = wk.currentIdx || 0;
+  const stmt = (wk.statements||[])[idx];
+  if (!stmt) return;
+
+  const votes  = (wk.votes||{})[idx] || {};
+  const total  = Object.keys(votes).length;
+
+  if (wk.phase === 'reveal') {
+    setDC(`<div class="display-centered">
+      <div class="display-big-emoji">🎯</div>
+      <div class="display-big-title" style="font-style:italic;">"${stmt.text}"</div>
+      <div class="display-big-sub" style="margin-top:16px;">→ <strong style="color:var(--accent);font-size:clamp(20px,3vw,36px);">${stmt.authorName}</strong></div>
+    </div>`);
+    return;
+  }
+
+  setDC(`<div class="display-poll" style="max-width:800px;">
+    <div class="display-poll-header">
+      <div class="display-label">AUSSAGE ${idx+1} VON ${(wk.statements||[]).length} · 🔍 KENNT IHR EURE KOLLEGEN?</div>
+      <div class="display-poll-q" style="font-style:italic;">"${stmt.text}"</div>
+    </div>
+    <div class="display-progress-pill" style="margin-top:20px;">${total} Stimmen</div>
+  </div>`);
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// DEMO-MODUS
+// ══════════════════════════════════════════════════════════════
+
+const DEMO_NAMES = ['Anna K.', 'Bernd M.', 'Clara S.', 'David R.', 'Eva L.'];
+let demoMode = false;
+let demoParticipantRefs = [];
+
+async function startDemoMode() {
+  demoMode = true;
+  sessionCode = randomCode();
+  isModerator = true;
+  sessionRef  = db.ref('sessions/' + sessionCode);
+
+  await sessionRef.set({
+    code: sessionCode, createdAt: Date.now(), phase: 'lobby',
+    welcome: { emoji: '🧪', title: 'Demo-Session', subtitle: 'Test-Modus aktiv' },
+    participants: {}, answers: {}, votes: {}
+  });
+
+  setTimeout(() => sessionRef.remove(), 2 * 60 * 60 * 1000);
+
+  // Add fake participants
+  demoParticipantRefs = [];
+  for (const name of DEMO_NAMES) {
+    const id  = 'demo_' + name.replace(/\W/g,'') + '_' + Date.now();
+    const ref = sessionRef.child('participants/' + id);
+    await ref.set({ id, name, joinedAt: Date.now(), demo: true });
+    ref.onDisconnect().remove();
+    demoParticipantRefs.push({ id, name, ref });
+  }
+
+  showModTopbar();
+  showModeratorLobby();
+  toast('🧪 Demo-Modus · 5 Fake-Teilnehmer verbunden', 'success');
+}
+
+// Demo: auto-fill Nobody is Perfect answers
+async function demoFillAnswers() {
+  const answers = [
+    'Ich habe mal einen Weltrekord aufgestellt.',
+    'Ich spreche fließend Klingonisch.',
+    'Ich war mal auf dem Mond.',
+    'Ich habe 3 Katzen namens Kant, Hegel und Nietzsche.',
+    'Ich kann rückwärts Fahrrad fahren während ich jongliere.'
+  ];
+  for (let i = 0; i < demoParticipantRefs.length; i++) {
+    const { id } = demoParticipantRefs[i];
+    await sessionRef.child('answers/' + id).set({ text: answers[i], authorId: id });
+    await new Promise(r => setTimeout(r, 300));
+  }
+  toast('🧪 Demo: Antworten wurden automatisch ausgefüllt', 'success');
+}
+
+// Demo: auto-fill Two Truths statements
+async function demoFillTwoTruths() {
+  const sets = [
+    { s: ['Ich war mal Profi-Schachspieler', 'Ich habe 3 Sprachen gelernt', 'Ich besitze ein Pferd'], lie: 2 },
+    { s: ['Ich koche leidenschaftlich', 'Ich habe in Tokyo gelebt', 'Ich bin ein Frühaufsteher'], lie: 0 },
+    { s: ['Ich kann jonglieren', 'Ich war nie im Ausland', 'Ich spiele Gitarre'], lie: 1 },
+    { s: ['Ich lese 2 Bücher pro Monat', 'Ich laufe Marathons', 'Ich esse kein Gemüse'], lie: 2 },
+    { s: ['Ich meditiere täglich', 'Ich habe mal auf einer Bühne gespielt', 'Ich schlafe 10h pro Nacht'], lie: 2 },
+  ];
+  for (let i = 0; i < demoParticipantRefs.length; i++) {
+    const { id } = demoParticipantRefs[i];
+    const set = sets[i];
+    await sessionRef.child('ttStatements/' + id).set({ statements: set.s, lieIndex: set.lie });
+    await new Promise(r => setTimeout(r, 300));
+  }
+  toast('🧪 Demo: Aussagen automatisch ausgefüllt', 'success');
+}
+
+// Demo: auto-fill bingo/whoknows submissions
+async function demoFillSubmissions() {
+  const submissionSets = [
+    ['Ich habe mal in Japan gearbeitet', 'Ich kann Gebärdensprache'],
+    ['Ich besitze ein Einhorn-Kostüm', 'Ich bin mit dem Fahrrad durch Europa gefahren'],
+    ['Ich habe 5 Geschwister', 'Ich war schon mal auf einem anderen Kontinent'],
+    ['Ich meditiere jeden Morgen', 'Ich spreche 4 Sprachen'],
+    ['Ich habe mal auf einer Theaterbühne gestanden', 'Ich koche jeden Sonntag für Familie'],
+  ];
+  for (let i = 0; i < demoParticipantRefs.length; i++) {
+    const { id } = demoParticipantRefs[i];
+    await sessionRef.child('bingoSubmissions/' + id).set({ statements: submissionSets[i] });
+    await new Promise(r => setTimeout(r, 300));
+  }
+  toast('🧪 Demo: Einreichungen automatisch ausgefüllt', 'success');
+}
+
+// Demo: auto-vote (random)
+async function demoAutoVote(path, options) {
+  for (const { id } of demoParticipantRefs) {
+    const randomOption = options[Math.floor(Math.random() * options.length)];
+    await sessionRef.child(path + '/' + id).set(randomOption);
+    await new Promise(r => setTimeout(r, 200));
+  }
+  toast('🧪 Demo: Abstimmung simuliert', 'success');
+}
+
+// Wire demo button on home screen
+if (!isDisplay) {
+  const demoBtn = document.getElementById('btn-demo-mode');
+  if (demoBtn) demoBtn.addEventListener('click', startDemoMode);
+}
+
+// Show demo helper panel when in demo mode
+function showDemoHelper(context) {
+  if (!demoMode) return;
+  const existing = document.getElementById('demo-helper');
+  if (existing) existing.remove();
+
+  const panel = document.createElement('div');
+  panel.id = 'demo-helper';
+  panel.style.cssText = `position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+    background:rgba(15,14,23,.95);border:1px solid var(--accent3);border-radius:var(--r);
+    padding:12px 16px;z-index:999;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+    max-width:90vw;box-shadow:0 4px 24px rgba(249,123,107,.2);`;
+
+  panel.innerHTML = `<span style="font-size:12px;color:var(--accent3);font-weight:600;">🧪 DEMO</span>`;
+
+  const actions = {
+    'input':           { label: 'Antworten füllen', fn: demoFillAnswers },
+    'twotruths_input': { label: 'Aussagen füllen',  fn: demoFillTwoTruths },
+    'bingo_collect':   { label: 'Einreichungen füllen', fn: demoFillSubmissions },
+    'whoknows_collect':{ label: 'Einreichungen füllen', fn: demoFillSubmissions },
+  };
+
+  if (actions[context]) {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-danger';
+    btn.style.cssText = 'font-size:12px;padding:5px 12px;';
+    btn.textContent = actions[context].label;
+    btn.onclick = actions[context].fn;
+    panel.appendChild(btn);
+  }
+
+  document.body.appendChild(panel);
 }
