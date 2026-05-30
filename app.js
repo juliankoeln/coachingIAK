@@ -30,16 +30,7 @@ let pollQuestions   = [];   // [{text, type, options:[]}]
 let pollCurrentIdx  = 0;
 let pollLiveListener = null;
 
-// ─── MOD TOPBAR ────────────────────────────────────────────────────────────
-function showModTopbar() {
-  document.getElementById('mod-topbar').style.display = 'flex';
-  document.getElementById('btn-topbar-welcome').onclick = goToWelcome;
-  document.getElementById('btn-topbar-welcome-edit').onclick = goToWelcomeEditor;
-  document.getElementById('btn-topbar-poll').onclick    = () => showPollEditor();
-  document.getElementById('btn-topbar-preset').onclick  = () => showPresetManager();
-  document.getElementById('btn-topbar-bingo').onclick   = () => showBingoEditor();
-  document.getElementById('btn-topbar-team').onclick    = () => showTeamEditor();
-}
+// ─── MOD TOPBAR – see showModTopbar() defined below ──────────────────────
 function goToWelcome() {
   // Just push phase to Firebase - all participant phones flip to welcome screen
   // Mod stays on current screen (no editor forced open)
