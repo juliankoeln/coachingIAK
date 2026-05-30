@@ -814,7 +814,7 @@ if (!isDisplay) {
     sessionCode = joinCode.length<=8 ? joinCode.toUpperCase() : joinCode.split('/').pop().toUpperCase();
     showScreen('screen-join');
     document.getElementById('session-code-join').textContent = sessionCode;
-  } else if (!isModerator) {
+  } else if (!isModerator && !isDisplay) {
     showScreen('screen-home');
   }
 
@@ -2831,9 +2831,9 @@ let demoMode = false;
 let demoParticipantRefs = [];
 
 async function startDemoMode() {
-  demoMode = true;
-  sessionCode = randomCode();
-  isModerator = true;
+  demoMode     = true;
+  isModerator  = true;   // set synchronously so screen-home guard works
+  sessionCode  = randomCode();
   sessionRef  = db.ref('sessions/' + sessionCode);
 
   await sessionRef.set({
@@ -2924,7 +2924,10 @@ async function demoAutoVote(path, options) {
 // Wire demo button on home screen
 if (!isDisplay) {
   const demoBtn = document.getElementById('btn-demo-mode');
-  if (demoBtn) demoBtn.addEventListener('click', startDemoMode);
+  if (demoBtn) demoBtn.addEventListener('click', () => {
+    isModerator = true; // guard against screen-home flash
+    startDemoMode();
+  });
 }
 
 // Show demo helper panel when in demo mode
